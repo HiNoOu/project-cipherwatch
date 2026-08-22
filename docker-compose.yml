@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  flower-server:
+    build: ./backend
+    command: >
+      python server.py
+      --server-address=0.0.0.0:8080
+      --num-rounds=20
+      --min-clients=4
+      --api-port=8000
+    ports:
+      - "8080:8080"   # Flower gRPC — institution nodes connect here
+      - "8000:8000"   # Dashboard API — the frontend polls this
+
+  institution-node-1:
+    build: ./backend
+    command: python client.py --node-id=1 --server-address=flower-server:8080
+    depends_on:
+      - flower-server
+
+  institution-node-2:
+    build: ./backend
+    command: python client.py --node-id=2 --server-address=flower-server:8080
+    depends_on:
+      - flower-server
+
+  institution-node-3:
+    build: ./backend
+    command: python client.py --node-id=3 --server-address=flower-server:8080
+    depends_on:
+      - flower-server
+
+  institution-node-4:
+    build: ./backend
+    command: python client.py --node-id=4 --server-address=flower-server:8080
+    depends_on:
+      - flower-server

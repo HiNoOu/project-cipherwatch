@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+torch
+flwr
+networkx
+numpy
