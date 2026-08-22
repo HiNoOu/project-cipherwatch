@@ -22,19 +22,25 @@ _demo_thread = None
 
 
 @app.post("/api/demo/start")
-def start_demo(n_institutions: int = 4, n_rounds: int = 20, round_delay_seconds: float = 2.0):
+def start_demo(
+    n_institutions: int = 4,
+    n_rounds: int = 20,
+    round_delay_seconds: float = 1.2,
+):
     global _demo_thread
+
+    # If thread is dead or not running, reset state and start fresh
     if _demo_thread is None or not _demo_thread.is_alive():
-        # Reset state if the class provides a reset method
         if hasattr(STATE, "reset"):
             STATE.reset()
-            
+
         _demo_thread = start_background_demo(
             n_institutions=n_institutions,
             n_rounds=n_rounds,
             round_delay_seconds=round_delay_seconds,
         )
         return {"started": True}
+
     return {"started": False, "reason": "already running"}
 
 
@@ -42,17 +48,25 @@ def start_demo(n_institutions: int = 4, n_rounds: int = 20, round_delay_seconds:
 def get_status():
     snap = STATE.snapshot()
     is_alive = bool(_demo_thread and _demo_thread.is_alive())
-    
+    current_round = snap.get("round", 0)
+    total_rounds = snap.get("total_rounds", 20)
+
+    # Consider running if the background thread is actively alive
+    is_live = is_alive or (0 < current_round < total_rounds)
+
     return {
         "global_accuracy": snap.get("global_accuracy"),
-        "accuracy_delta": snap.get("accuracy_delta", 0),
-        "institutions_online": snap.get("institutions_online", 0),
+        "accuracy_delta": snap.get("accuracy_delta", 0.0),
+        "institutions_online": snap.get("institutions_online", 4),
         "institutions_total": snap.get("institutions_total", 4),
         "clusters_flagged": snap.get("clusters_flagged", 0),
-        "chain_integrity": snap.get("chain_integrity", {"verified_blocks": 0, "total_blocks": snap.get("total_rounds", 20)}),
-        "round": snap.get("round", 0),
-        "total_rounds": snap.get("total_rounds", 20),
-        "live": is_alive or (0 < snap.get("round", 0) < snap.get("total_rounds", 20)),
+        "chain_integrity": snap.get(
+            "chain_integrity",
+            {"verified_blocks": current_round, "total_blocks": total_rounds},
+        ),
+        "round": current_round,
+        "total_rounds": total_rounds,
+        "live": is_live,
     }
 
 
@@ -74,10 +88,11 @@ def get_hero_cluster():
 
 
 @app.get("/api/audit-log")
-def get_audit_log(limit: int = 10):
+def get_audit_log(limit: int = 20):
     with STATE._lock:
         log = list(STATE.audit_log)
-    return log[-limit:]
+    # Return latest blocks ordered with most recent first
+    return list(reversed(log[-limit:]))
 
 
 @app.get("/")
