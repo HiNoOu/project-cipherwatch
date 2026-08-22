@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   LineChart,
   Line,
@@ -9,7 +9,6 @@ import {
   CartesianGrid,
 } from "recharts";
 
-// MUST start with https://
 const API_BASE = "https://project-cipherwatch-production.up.railway.app/api";
 
 export default function App() {
@@ -20,41 +19,101 @@ export default function App() {
   const [auditLog, setAuditLog] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState(null);
-  
-const fetchDashboardData = async () => {
-  try {
-    const [statusRes, accRes, instRes, heroRes, auditRes] = await Promise.all([
-      fetch(`${API_BASE}/status`).then((r) => r.json()),
-      fetch(`${API_BASE}/accuracy-history`).then((r) => r.json()),
-      fetch(`${API_BASE}/institutions`).then((r) => r.json()),
-      fetch(`${API_BASE}/hero-cluster`).then((r) => r.json()),
-      fetch(`${API_BASE}/audit-log`).then((r) => r.json()),
-    ]);
 
-    if (statusRes) {
-      setStatus(statusRes);
-      setIsRunning(Boolean(statusRes.live || statusRes.is_running));
+  const isMountedRef = useRef(true);
+
+  const fetchDashboardData = useCallback(async () => {
+    try {
+      const [statusRes, accRes, instRes, heroRes, auditRes] = await Promise.all([
+        fetch(`${API_BASE}/status`).then((r) => (r.ok ? r.json() : null)),
+        fetch(`${API_BASE}/accuracy-history`).then((r) => (r.ok ? r.json() : null)),
+        fetch(`${API_BASE}/institutions`).then((r) => (r.ok ? r.json() : null)),
+        fetch(`${API_BASE}/hero-cluster`).then((r) => (r.ok ? r.json() : null)),
+        fetch(`${API_BASE}/audit-log`).then((r) => (r.ok ? r.json() : null)),
+      ]);
+
+      if (!isMountedRef.current) return;
+
+      if (statusRes) {
+        setStatus(statusRes);
+        setIsRunning(Boolean(statusRes.live));
+      }
+
+      if (accRes && Array.isArray(accRes.rounds)) {
+        setAccuracyHistory(accRes);
+      }
+
+      if (instRes && typeof instRes === "object") {
+        setInstitutions(instRes);
+      }
+
+      if (heroRes && typeof heroRes === "object") {
+        setHeroCluster(heroRes);
+      }
+
+      if (auditRes && Array.isArray(auditRes)) {
+        setAuditLog(auditRes);
+      }
+    } catch (err) {
+      console.warn("Telemetry sync warning:", err);
     }
-    if (accRes) setAccuracyHistory(accRes);
-    if (instRes) setInstitutions(instRes);
-    if (heroRes) setHeroCluster(heroRes);
-    if (auditRes) setAuditLog(Array.isArray(auditRes) ? auditRes : []);
-  } catch (err) {
-    // Network error
-  }
-};
+  }, []);
 
-const handleStartSimulation = async () => {
-  try {
-    setIsRunning(true);
-    await fetch(`${API_BASE}/demo/start`, { method: "POST" });
+  useEffect(() => {
+    isMountedRef.current = true;
     fetchDashboardData();
-  } catch (err) {
-    console.error("Failed to start run:", err);
-  }
-};
 
-  // 14-Node Synthetic Graph Layout
+    // Constant 750ms polling loop
+    const interval = setInterval(() => {
+      fetchDashboardData();
+    }, 750);
+
+    return () => {
+      isMountedRef.current = false;
+      clearInterval(interval);
+    };
+  }, [fetchDashboardData]);
+
+  const handleStartSimulation = async () => {
+    try {
+      // 1. Instantly flush previous cycle from UI
+      setIsRunning(true);
+      setStatus({
+        round: 0,
+        total_rounds: 20,
+        global_accuracy: null,
+        accuracy_delta: 0,
+        institutions_online: 4,
+        institutions_total: 4,
+        clusters_flagged: 0,
+        chain_integrity: { verified_blocks: 0, total_blocks: 20 },
+        live: true,
+      });
+      setAccuracyHistory({ rounds: [], accuracy: [] });
+      setAuditLog([]);
+      setHeroCluster({
+        wallet_count: 14,
+        local_score: 0.4,
+        local_label: "LOW-RISK",
+        global_score: 0.0,
+        global_label: "AWAITING",
+      });
+
+      // 2. Trigger fresh background execution
+      await fetch(`${API_BASE}/demo/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      // 3. Trigger immediate state pull
+      fetchDashboardData();
+    } catch (err) {
+      console.error("Failed to start federated run:", err);
+      setIsRunning(false);
+    }
+  };
+
+  // 14-Node Topology Ring
   const clusterGraphNodes = useMemo(() => {
     const nodes = [];
     const count = heroCluster?.wallet_count || 14;
@@ -88,23 +147,19 @@ const handleStartSimulation = async () => {
     return edges;
   }, [clusterGraphNodes]);
 
-  const chartData = (accuracyHistory?.rounds || []).map((rnd, i) => ({
-    round: `R${rnd}`,
-    accuracy: Number(((accuracyHistory?.accuracy?.[i] || 0) * 100).toFixed(1)),
-  }));
+  const chartData = useMemo(() => {
+    return (accuracyHistory?.rounds || []).map((rnd, i) => ({
+      round: `R${rnd}`,
+      accuracy: Number(((accuracyHistory?.accuracy?.[i] || 0) * 100).toFixed(1)),
+    }));
+  }, [accuracyHistory]);
 
   const globalScore = heroCluster?.global_score ?? 0;
   const isGlobalHighRisk = globalScore >= 0.5;
 
-  // Safe chain integrity calculation
-  const verifiedBlocks =
-    status?.chain_integrity?.verified_blocks ??
-    status?.verified_blocks ??
-    auditLog.length ??
-    status?.round ??
-    0;
-
+  const currentRound = status?.round ?? 0;
   const totalRounds = status?.total_rounds || 20;
+  const verifiedBlocks = status?.chain_integrity?.verified_blocks ?? currentRound;
 
   return (
     <div className="min-h-screen bg-[#000000] text-[#FFFFFF] font-mono text-[12px] p-2 select-none">
@@ -122,8 +177,8 @@ const handleStartSimulation = async () => {
             />
             <span className="font-bold">
               {isRunning
-                ? `ROUND ${status?.round || 0} OF ${totalRounds} [LIVE]`
-                : `SYSTEM READY [ROUND ${status?.round || 0}/${totalRounds}]`}
+                ? `ROUND ${currentRound} OF ${totalRounds} [LIVE]`
+                : `SYSTEM READY [ROUND ${currentRound}/${totalRounds}]`}
             </span>
             <button
               onClick={handleStartSimulation}
@@ -145,7 +200,7 @@ const handleStartSimulation = async () => {
             <div className="border border-[#00C8FF] bg-[#050505] p-2.5">
               <div className="text-[#00C8FF] text-[10px] uppercase">GLOBAL ACCURACY</div>
               <div className="text-[22px] font-bold text-[#FFFFFF] my-0.5">
-                {status?.global_accuracy !== undefined
+                {status?.global_accuracy !== null && status?.global_accuracy !== undefined
                   ? `${(status.global_accuracy * 100).toFixed(1)}%`
                   : "0.0%"}
               </div>
@@ -157,7 +212,8 @@ const handleStartSimulation = async () => {
             <div className="border border-[#00C8FF] bg-[#050505] p-2.5">
               <div className="text-[#00C8FF] text-[10px] uppercase">INSTITUTIONS ONLINE</div>
               <div className="text-[22px] font-bold text-[#FFFFFF] my-0.5">
-                {status?.institutions_online ?? Object.keys(institutions).length ?? 0} / {status?.institutions_total ?? 4}
+                {status?.institutions_online ?? Object.keys(institutions).length ?? 4} /{" "}
+                {status?.institutions_total ?? 4}
               </div>
               <div className="text-[#8E8E93] text-[10px]">DIFFERENTIAL PRIVACY ε-ON</div>
             </div>
@@ -228,6 +284,7 @@ const handleStartSimulation = async () => {
                         strokeWidth={2}
                         dot={{ fill: "#FFFF00", r: 3 }}
                         activeDot={{ r: 5 }}
+                        isAnimationActive={false}
                       />
                     </LineChart>
                   </ResponsiveContainer>
@@ -257,13 +314,15 @@ const handleStartSimulation = async () => {
                     className="flex justify-between items-center border-b border-[#222222] pb-1 text-[11px]"
                   >
                     <span className="text-[#00C8FF]">{key.replace("_", " ")}</span>
-                    <span className="text-[#8E8E93] text-[10px]">{data.label}</span>
+                    <span className="text-[#8E8E93] text-[10px]">{data?.label || "NODE"}</span>
                     <span
                       className={`font-bold ${
-                        data.status === "SYNCED" ? "text-[#00FF00]" : "text-[#FFFF00] animate-pulse"
+                        data?.status === "SYNCED"
+                          ? "text-[#00FF00]"
+                          : "text-[#FFFF00] animate-pulse"
                       }`}
                     >
-                      [ {data.status} ]
+                      [ {data?.status || "IDLE"} ]
                     </span>
                   </div>
                 ))}
@@ -344,7 +403,7 @@ const handleStartSimulation = async () => {
               </div>
             </div>
 
-            {/* SVG GRAPH */}
+            {/* INTERACTIVE TOPOLOGY GRAPH */}
             <div className="lg:col-span-7 border border-[#00C8FF] bg-[#050505] p-2.5 flex flex-col justify-between">
               <div className="flex justify-between items-center mb-1">
                 <div>
