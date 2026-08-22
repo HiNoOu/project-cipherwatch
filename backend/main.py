@@ -3,12 +3,11 @@ FastAPI backend for the Federated Threat Intelligence Console dashboard.
 """
 
 import asyncio
-import numpy as np
+import random
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from hash_chain import HashChain
-from synthetic_data import Hero_ClusterID
 
 app = FastAPI()
 
@@ -27,7 +26,7 @@ INSTITUTION_LABELS = {
     4: "BANK / SETTLEMENT (Nexus)",
 }
 
-# Global State Container
+
 class DashboardState:
     def __init__(self):
         self.reset()
@@ -48,7 +47,7 @@ class DashboardState:
             "NODE_D": {"label": "BANK / SETTLEMENT (Nexus)", "status": "SYNCED"},
         }
         self.hero_cluster = {
-            "id": Hero_ClusterID if "Hero_ClusterID" in globals() else "CLUSTER_HERO_0X7A2",
+            "id": "CLUSTER_HERO_0X7A2",
             "wallet_count": 14,
             "local_score": 0.40,
             "local_label": "LOW-RISK",
@@ -59,27 +58,39 @@ class DashboardState:
         self.audit_log = []
         self.is_running = False
 
+
 STATE = DashboardState()
 _current_task = None
 
 
-async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 1.2):
+async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
     STATE.is_running = True
     chain = HashChain()
-    base_acc = 0.52
+    current_acc = 0.528
 
     try:
         for r in range(1, n_rounds + 1):
             await asyncio.sleep(round_delay)
 
-            # 1. Progression Math
-            delta = round(0.022 + (0.012 / r), 4)
-            base_acc = min(0.965, round(base_acc + delta, 4))
-            
-            local_hero = 0.40
-            global_hero = round(min(0.96, 0.40 + (r * 0.035)), 2)
+            # 1. Realistic Differential Privacy Accuracy with variance
+            dp_noise = random.uniform(-0.012, 0.018) if r > 3 else random.uniform(0.015, 0.035)
+            step_gain = (0.024 / (1.0 + r * 0.06)) + dp_noise
+            new_acc = max(0.50, min(0.968, current_acc + step_gain))
+            delta = round(new_acc - current_acc, 4)
+            current_acc = round(new_acc, 4)
 
-            # 2. Node D blinks syncing every 3 rounds
+            # 2. Clusters Flagged in the 100s–200s range
+            clusters_flagged = int(54 + (r * 9) + int(current_acc * 32) + random.randint(-2, 3))
+
+            # 3. Hero Cluster Progressive Global Discovery
+            local_hero = 0.40
+            if r < 4:
+                global_hero = round(0.38 + random.uniform(-0.03, 0.04), 2)
+            else:
+                target_score = min(0.96, 0.42 + ((r - 3) * 0.038) + random.uniform(-0.02, 0.02))
+                global_hero = round(target_score, 2)
+
+            # 4. Node D blinks SYNCING every 3 rounds
             inst_status = {
                 "NODE_A": {"label": "EXCHANGE (Alpha)", "status": "SYNCED"},
                 "NODE_B": {"label": "FORENSIC FIRM (ChainScan)", "status": "SYNCED"},
@@ -90,25 +101,23 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 1.2):
                 },
             }
 
-            clusters_flagged = int(1 if r < 6 else (2 if r < 14 else 3))
-
             block = chain.append(
                 r,
                 {
-                    "global_accuracy": base_acc,
+                    "global_accuracy": current_acc,
                     "clusters_flagged": clusters_flagged,
                 },
             )
 
-            # 3. Update Live Telemetry
+            # 5. Push telemetry
             STATE.round = r
             STATE.accuracy_delta = delta
-            STATE.global_accuracy = base_acc
-            STATE.accuracy_history.append(base_acc)
+            STATE.global_accuracy = current_acc
+            STATE.accuracy_history.append(current_acc)
             STATE.institutions = inst_status
             STATE.clusters_flagged = clusters_flagged
             STATE.chain_integrity = {"verified_blocks": r, "total_blocks": n_rounds}
-            
+
             STATE.hero_cluster = {
                 "id": "CLUSTER_HERO_0X7A2",
                 "wallet_count": 14,
@@ -118,12 +127,15 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 1.2):
                 "global_label": "HIGH-RISK" if global_hero >= 0.50 else "AWAITING",
             }
 
-            STATE.audit_log.insert(0, {
-                "block": f"#{block.index:04d}",
-                "round": block.round,
-                "hash": block.hash[:16] + "…",
-                "status": "VERIFIED",
-            })
+            STATE.audit_log.insert(
+                0,
+                {
+                    "block": f"#{block.index:04d}",
+                    "round": block.round,
+                    "hash": block.hash[:16] + "…",
+                    "status": "VERIFIED",
+                },
+            )
 
     except asyncio.CancelledError:
         pass
@@ -132,15 +144,16 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 1.2):
 
 
 @app.post("/api/demo/start")
-async def start_demo(n_rounds: int = 20, round_delay_seconds: float = 1.2):
+async def start_demo(n_rounds: int = 20, round_delay_seconds: float = 2.0):
     global _current_task
-    
-    # Cancel previous run if still active
+
     if _current_task and not _current_task.done():
         _current_task.cancel()
 
     STATE.reset()
-    _current_task = asyncio.create_task(run_simulation_worker(n_rounds, round_delay_seconds))
+    _current_task = asyncio.create_task(
+        run_simulation_worker(n_rounds=n_rounds, round_delay=round_delay_seconds)
+    )
     return {"started": True, "live": True}
 
 
