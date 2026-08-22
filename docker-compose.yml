@@ -1,38 +1,73 @@
 version: '3.8'
 
 services:
-  flower-server:
-    build: ./backend
-    command: >
-      python server.py
-      --server-address=0.0.0.0:8080
-      --num-rounds=20
-      --min-clients=4
-      --api-port=8000
+  server:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python server.py
     ports:
-      - "8080:8080"   # Flower gRPC — institution nodes connect here
-      - "8000:8000"   # Dashboard API — the frontend polls this
+      - "8080:8080"
+    environment:
+      - PYTHONUNBUFFERED=1
 
-  institution-node-1:
-    build: ./backend
-    command: python client.py --node-id=1 --server-address=flower-server:8080
+  client-a:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python client.py --node-id 1 --server-address server:8080
     depends_on:
-      - flower-server
+      - server
+    environment:
+      - PYTHONUNBUFFERED=1
 
-  institution-node-2:
-    build: ./backend
-    command: python client.py --node-id=2 --server-address=flower-server:8080
+  client-b:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python client.py --node-id 2 --server-address server:8080
     depends_on:
-      - flower-server
+      - server
+    environment:
+      - PYTHONUNBUFFERED=1
 
-  institution-node-3:
-    build: ./backend
-    command: python client.py --node-id=3 --server-address=flower-server:8080
+  client-c:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python client.py --node-id 3 --server-address server:8080
     depends_on:
-      - flower-server
+      - server
+    environment:
+      - PYTHONUNBUFFERED=1
 
-  institution-node-4:
-    build: ./backend
-    command: python client.py --node-id=4 --server-address=flower-server:8080
+  client-d:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python client.py --node-id 4 --server-address server:8080
     depends_on:
-      - flower-server
+      - server
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python -m uvicorn main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      - server
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
