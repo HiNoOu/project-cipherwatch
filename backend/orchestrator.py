@@ -83,12 +83,17 @@ def federated_average(weight_list: list[list[np.ndarray]], sample_counts: list[i
 
 def _risk_label(score: float | None) -> str | None:
     if score is None:
-        return None
+        return "AWAITING"
     return "HIGH-RISK" if score >= 0.5 else "LOW-RISK"
 
 
-def run_demo(n_institutions: int = 4, n_rounds: int = 20, dp_noise_multiplier: float = 0.05,
-             round_delay_seconds: float = 0.3, n_samples: int = 5000):
+def run_demo(
+    n_institutions: int = 4,
+    n_rounds: int = 20,
+    dp_noise_multiplier: float = 0.05,
+    round_delay_seconds: float = 1.5,
+    n_samples: int = 5000,
+):
     try:
         init_cache(n_institutions=n_institutions, n_samples=n_samples)
         clients = _PREWARMED_CLIENTS
@@ -130,37 +135,48 @@ def run_demo(n_institutions: int = 4, n_rounds: int = 20, dp_noise_multiplier: f
                     "status": "SYNCED" if (i != n_institutions - 1 or round_num % 3 != 0) else "SYNCING",
                 }
 
-            clusters_flagged = int(50 + round_num * 9 + (global_accuracy * 30))
+            clusters_flagged = int(1 if round_num < 6 else (2 if round_num < 14 else 3))
 
-            block = chain.append(round_num, {
-                "global_accuracy": round(global_accuracy, 4),
-                "clusters_flagged": clusters_flagged,
-            })
+            block = chain.append(
+                round_num,
+                {
+                    "global_accuracy": round(global_accuracy, 4),
+                    "clusters_flagged": clusters_flagged,
+                },
+            )
 
             STATE.update_round(
                 round_num=round_num,
                 total_rounds=n_rounds,
                 accuracy=round(global_accuracy, 4),
                 institutions=institutions_status,
+                institutions_online=len(clients),
+                institutions_total=n_institutions,
+                chain_integrity={
+                    "verified_blocks": round_num,
+                    "total_blocks": n_rounds,
+                },
                 hero_cluster={
                     "id": Hero_ClusterID,
                     "wallet_count": hero_wallet_count,
-                    "local_score": round(local_hero_score_before, 2) if local_hero_score_before is not None else None,
+                    "local_score": round(local_hero_score_before, 2),
                     "local_label": _risk_label(local_hero_score_before),
-                    "global_score": round(global_hero_score, 2) if global_hero_score is not None else None,
+                    "global_score": round(global_hero_score, 2),
                     "global_label": _risk_label(global_hero_score),
                 },
                 clusters_flagged=clusters_flagged,
                 audit_block={
                     "block": f"#{block.index:04d}",
                     "round": block.round,
-                    "hash": block.hash[:12] + "…",
+                    "hash": block.hash[:16] + "…",
                     "status": "VERIFIED",
                 },
             )
 
-            print(f"[round {round_num}/{n_rounds}] acc={global_accuracy:.3f} "
-                  f"local={local_hero_score_before:.2f} global={global_hero_score:.2f}")
+            print(
+                f"[round {round_num}/{n_rounds}] acc={global_accuracy:.3f} "
+                f"local={local_hero_score_before:.2f} global={global_hero_score:.2f}"
+            )
 
             time.sleep(round_delay_seconds)
 
@@ -178,5 +194,5 @@ def start_background_demo(**kwargs) -> threading.Thread:
     return t
 
 
-# Pre-generate datasets immediately on import so Round 1 is instant
+# Pre-generate datasets immediately on import
 init_cache()
