@@ -9,7 +9,8 @@ import {
   CartesianGrid,
 } from "recharts";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://project-cipherwatch-production.up.railway.app";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "https://project-cipherwatch-production.up.railway.app";
+const API_BASE_URL = API_BASE;
 
 export default function App() {
   const [status, setStatus] = useState(null);
