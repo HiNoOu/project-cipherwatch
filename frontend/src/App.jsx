@@ -36,13 +36,8 @@ export default function App() {
 
       if (statusRes) {
         setStatus(statusRes);
-        if (statusRes.round > 0 && statusRes.round < (statusRes.total_rounds || 20)) {
-          setIsRunning(true);
-        } else if (statusRes.round >= (statusRes.total_rounds || 20)) {
-          setIsRunning(false);
-        } else {
-          setIsRunning(Boolean(statusRes.live));
-        }
+        // Automatically sync run status on page load/reopen
+        setIsRunning(Boolean(statusRes.live));
       }
 
       if (accRes && Array.isArray(accRes.rounds)) {
@@ -65,23 +60,10 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
-    isMountedRef.current = true;
-    fetchDashboardData();
-
-    const interval = setInterval(() => {
-      fetchDashboardData();
-    }, 750);
-
-    return () => {
-      isMountedRef.current = false;
-      clearInterval(interval);
-    };
-  }, [fetchDashboardData]);
-
   const handleStartSimulation = async (e) => {
     if (e) e.preventDefault();
     try {
+      // 1. Flush UI for a fresh manual run
       setIsRunning(true);
       setStatus({
         round: 0,
@@ -97,6 +79,7 @@ export default function App() {
       setAccuracyHistory({ rounds: [], accuracy: [] });
       setAuditLog([]);
 
+      // 2. Trigger fresh background execution
       await fetch(`${API_BASE}/demo/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
