@@ -22,7 +22,8 @@ app = FastAPI(title="FTIC Backend")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten to your Vite dev origin before the real demo if you want
+    allow_origins=["*"],  # Allows requests from your Railway domain
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
