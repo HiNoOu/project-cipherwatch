@@ -9,9 +9,7 @@ import {
   CartesianGrid,
 } from "recharts";
 
-// Appended /api so all routes match the FastAPI backend Swagger specs
-const BASE_HOST = import.meta.env.VITE_API_BASE_URL || "https://project-cipherwatch-production.up.railway.app";
-const API_BASE = BASE_HOST.endsWith("/api") ? BASE_HOST : `${BASE_HOST}/api`;
+const API_BASE = "https://project-cipherwatch-production.up.railway.app/api";
 
 export default function App() {
   const [status, setStatus] = useState(null);
@@ -32,14 +30,16 @@ export default function App() {
         fetch(`${API_BASE}/audit-log`).then((r) => r.json()),
       ]);
 
-      setStatus(statusRes);
-      setAccuracyHistory(accRes);
-      setInstitutions(instRes);
-      setHeroCluster(heroRes);
-      setAuditLog(auditRes);
-      setIsRunning(Boolean(statusRes?.live));
+      if (statusRes) {
+        setStatus(statusRes);
+        setIsRunning(Boolean(statusRes.live || statusRes.is_running || statusRes.running));
+      }
+      if (accRes) setAccuracyHistory(accRes);
+      if (instRes) setInstitutions(instRes);
+      if (heroRes) setHeroCluster(heroRes);
+      if (auditRes) setAuditLog(Array.isArray(auditRes) ? auditRes : []);
     } catch (err) {
-      // Backend polling error
+      console.warn("Polling error:", err);
     }
   };
 
@@ -51,8 +51,9 @@ export default function App() {
 
   const handleStartSimulation = async () => {
     try {
-      await fetch(`${API_BASE}/demo/start`, { method: "POST" });
       setIsRunning(true);
+      await fetch(`${API_BASE}/demo/start`, { method: "POST" });
+      fetchDashboardData();
     } catch (err) {
       console.error("Failed to start run:", err);
     }
@@ -94,11 +95,21 @@ export default function App() {
 
   const chartData = (accuracyHistory?.rounds || []).map((rnd, i) => ({
     round: `R${rnd}`,
-    accuracy: Number(((accuracyHistory.accuracy[i] || 0) * 100).toFixed(1)),
+    accuracy: Number(((accuracyHistory?.accuracy?.[i] || 0) * 100).toFixed(1)),
   }));
 
   const globalScore = heroCluster?.global_score ?? 0;
   const isGlobalHighRisk = globalScore >= 0.5;
+
+  // Safe chain integrity calculation
+  const verifiedBlocks =
+    status?.chain_integrity?.verified_blocks ??
+    status?.verified_blocks ??
+    auditLog.length ??
+    status?.round ??
+    0;
+
+  const totalRounds = status?.total_rounds || 20;
 
   return (
     <div className="min-h-screen bg-[#000000] text-[#FFFFFF] font-mono text-[12px] p-2 select-none">
@@ -116,8 +127,8 @@ export default function App() {
             />
             <span className="font-bold">
               {isRunning
-                ? `ROUND ${status?.round || 0} OF ${status?.total_rounds || 20} [LIVE]`
-                : `SYSTEM READY [ROUND ${status?.round || 0}/${status?.total_rounds || 20}]`}
+                ? `ROUND ${status?.round || 0} OF ${totalRounds} [LIVE]`
+                : `SYSTEM READY [ROUND ${status?.round || 0}/${totalRounds}]`}
             </span>
             <button
               onClick={handleStartSimulation}
@@ -139,7 +150,7 @@ export default function App() {
             <div className="border border-[#00C8FF] bg-[#050505] p-2.5">
               <div className="text-[#00C8FF] text-[10px] uppercase">GLOBAL ACCURACY</div>
               <div className="text-[22px] font-bold text-[#FFFFFF] my-0.5">
-                {status?.global_accuracy
+                {status?.global_accuracy !== undefined
                   ? `${(status.global_accuracy * 100).toFixed(1)}%`
                   : "0.0%"}
               </div>
@@ -151,7 +162,7 @@ export default function App() {
             <div className="border border-[#00C8FF] bg-[#050505] p-2.5">
               <div className="text-[#00C8FF] text-[10px] uppercase">INSTITUTIONS ONLINE</div>
               <div className="text-[22px] font-bold text-[#FFFFFF] my-0.5">
-                {status?.institutions_online ?? 0} / {status?.institutions_total ?? 4}
+                {status?.institutions_online ?? Object.keys(institutions).length ?? 0} / {status?.institutions_total ?? 4}
               </div>
               <div className="text-[#8E8E93] text-[10px]">DIFFERENTIAL PRIVACY ε-ON</div>
             </div>
@@ -167,8 +178,7 @@ export default function App() {
             <div className="border border-[#00C8FF] bg-[#050505] p-2.5">
               <div className="text-[#00C8FF] text-[10px] uppercase">CHAIN INTEGRITY</div>
               <div className="text-[22px] font-bold text-[#00FF00] my-0.5">
-                {status?.chain_integrity?.verified_blocks ?? 0} /{" "}
-                {status?.total_rounds || 20}
+                {verifiedBlocks} / {totalRounds}
               </div>
               <div className="text-[#00FF00] text-[10px]">100% SHA-256 VERIFIED</div>
             </div>
@@ -272,7 +282,6 @@ export default function App() {
 
           {/* LOWER ROW: CLUSTER RISK PROGRESSION & INTERACTIVE GRAPH */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-2">
-            {/* PROGRESSION PIPELINE */}
             <div className="lg:col-span-5 border border-[#00C8FF] bg-[#050505] p-2.5 flex flex-col justify-between">
               <div>
                 <div className="text-[#FFA028] text-[11px] font-bold">
@@ -283,7 +292,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* RETRO PIPELINE DIAGRAM */}
               <div className="border border-[#222222] p-2 bg-[#000000] space-y-2">
                 <div className="flex items-center justify-between border border-[#8E8E93] p-2">
                   <div>
@@ -341,7 +349,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* CYTOSCAPE / SVG GRAPH VISUALIZER */}
+            {/* SVG GRAPH */}
             <div className="lg:col-span-7 border border-[#00C8FF] bg-[#050505] p-2.5 flex flex-col justify-between">
               <div className="flex justify-between items-center mb-1">
                 <div>
@@ -359,7 +367,6 @@ export default function App() {
 
               <div className="relative border border-[#222222] bg-[#000000] h-52 flex items-center justify-center overflow-hidden">
                 <svg viewBox="0 0 460 220" className="w-full h-full">
-                  {/* EDGES */}
                   {clusterEdges.map((e, idx) => (
                     <line
                       key={idx}
@@ -374,7 +381,6 @@ export default function App() {
                     />
                   ))}
 
-                  {/* NODES */}
                   {clusterGraphNodes.map((n) => {
                     const isSelected = selectedWallet?.id === n.id;
                     const nodeColor = isGlobalHighRisk ? "#FF3B30" : "#00FF00";
@@ -408,7 +414,6 @@ export default function App() {
                   })}
                 </svg>
 
-                {/* INSPECTOR OVERLAY */}
                 {selectedWallet && (
                   <div className="absolute top-2 right-2 bg-[#050505] border border-[#FFFF00] p-2 text-[10px] space-y-0.5">
                     <div className="text-[#FFFF00] font-bold">{selectedWallet.id}</div>
@@ -463,7 +468,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* TERMINAL BOTTOM STATUS BAR */}
+        {/* FOOTER */}
         <div className="bg-[#111111] border-t border-[#FFA028] text-[#8E8E93] px-3 py-1 text-[10px] flex justify-between items-center">
           <span>
             PRESS <span className="text-[#FFFF00]">START RUN &lt;GO&gt;</span> FOR FEDERATED TRAINING
