@@ -1,6 +1,7 @@
-fastapi
-uvicorn[standard]
+--extra-index-url https://download.pytorch.org/whl/cpu
 torch
-flwr
-networkx
+fastapi
+uvicorn
 numpy
+scikit-learn
+pydantic
