@@ -12,22 +12,22 @@ Endpoints map directly onto the dashboard mock:
 Run with:  uvicorn main:app --reload --port 8000
 """
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from state_store import STATE
 from orchestrator import start_background_demo
 
-app = FastAPI(title="FTIC Backend")
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows requests from your Railway domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 _demo_thread = None
 
 
