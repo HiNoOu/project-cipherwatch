@@ -171,7 +171,6 @@ async def get_status():
         "live": STATE.is_running,
     }
 
-
 @app.get("/api/accuracy-history")
 async def get_accuracy_history():
     return {
