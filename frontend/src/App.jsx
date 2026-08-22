@@ -83,33 +83,39 @@ export default function App() {
     if (e) e.preventDefault();
     try {
       setIsRunning(true);
+      setStatus({
+        round: 0,
+        total_rounds: 20,
+        global_accuracy: null,
+        accuracy_delta: 0,
+        institutions_online: 4,
+        institutions_total: 4,
+        clusters_flagged: 0,
+        chain_integrity: { verified_blocks: 0, total_blocks: 20 },
+        live: true,
+      });
+      setAccuracyHistory({ rounds: [], accuracy: [] });
+      setAuditLog([]);
 
-      const response = await fetch(`${API_BASE}/demo/start`, {
+      await fetch(`${API_BASE}/demo/start`, {
         method: "POST",
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          n_institutions: 4,
-          n_rounds: 20,
-          round_delay_seconds: 1.5,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ n_rounds: 20, round_delay_seconds: 2.0 }),
       });
 
-      if (response.ok) {
-        setTimeout(() => {
-          fetchDashboardData();
-        }, 300);
-      } else {
-        setIsRunning(false);
-      }
+      setTimeout(fetchDashboardData, 300);
     } catch (err) {
       console.error("Failed to start run:", err);
       setIsRunning(false);
     }
   };
 
+  const currentRound = status?.round ?? 0;
+  const totalRounds = status?.total_rounds || 20;
+  const globalScore = heroCluster?.global_score ?? 0;
+  const isGlobalHighRisk = globalScore >= 0.5;
+
+  // 14-Node Dynamic Topology Layout
   const clusterGraphNodes = useMemo(() => {
     const nodes = [];
     const count = heroCluster?.wallet_count || 14;
@@ -119,6 +125,9 @@ export default function App() {
 
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * 2 * Math.PI;
+      // Nodes progressively get flagged as rounds advance
+      const isNodeFlagged = currentRound > 4 && (i < Math.floor((currentRound / 20) * count) || isGlobalHighRisk);
+
       nodes.push({
         id: `0x7a2...f${(i + 1).toString(16)}`,
         label: `W-${i + 1}`,
@@ -126,22 +135,41 @@ export default function App() {
         y: centerY + radius * Math.sin(angle) + (i % 3 === 0 ? -6 : 6),
         amount: ((i + 1) * 3.42).toFixed(2) + " ETH",
         hops: 2 + (i % 4),
+        isFlagged: isNodeFlagged,
       });
     }
     return nodes;
-  }, [heroCluster?.wallet_count]);
+  }, [heroCluster?.wallet_count, currentRound, isGlobalHighRisk]);
 
+  // Edges progressively discovered across rounds
   const clusterEdges = useMemo(() => {
     const edges = [];
     const count = clusterGraphNodes.length;
     for (let i = 0; i < count; i++) {
-      edges.push({ from: clusterGraphNodes[i], to: clusterGraphNodes[(i + 1) % count] });
-      if (i % 3 === 0) {
-        edges.push({ from: clusterGraphNodes[i], to: clusterGraphNodes[(i + 5) % count] });
+      edges.push({
+        from: clusterGraphNodes[i],
+        to: clusterGraphNodes[(i + 1) % count],
+        active: true,
+      });
+
+      // Cross-syndicate edges unlock as consensus grows
+      if (i % 3 === 0 && currentRound >= 5) {
+        edges.push({
+          from: clusterGraphNodes[i],
+          to: clusterGraphNodes[(i + 5) % count],
+          active: true,
+        });
+      }
+      if (i % 4 === 0 && currentRound >= 12) {
+        edges.push({
+          from: clusterGraphNodes[i],
+          to: clusterGraphNodes[(i + 7) % count],
+          active: true,
+        });
       }
     }
     return edges;
-  }, [clusterGraphNodes]);
+  }, [clusterGraphNodes, currentRound]);
 
   const chartData = useMemo(() => {
     return (accuracyHistory?.rounds || []).map((rnd, i) => ({
@@ -150,11 +178,6 @@ export default function App() {
     }));
   }, [accuracyHistory]);
 
-  const globalScore = heroCluster?.global_score ?? 0;
-  const isGlobalHighRisk = globalScore >= 0.5;
-
-  const currentRound = status?.round ?? 0;
-  const totalRounds = status?.total_rounds || 20;
   const verifiedBlocks = status?.chain_integrity?.verified_blocks ?? currentRound;
 
   return (
@@ -231,9 +254,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* MIDDLE ROW */}
+          {/* MIDDLE ROW: CHART & INSTITUTION TABLE */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-2">
-            {/* ACCURACY CHART */}
             <div className="lg:col-span-7 border border-[#FFA028] bg-[#050505] p-2.5 flex flex-col justify-between">
               <div>
                 <div className="text-[#FFA028] text-[11px] font-bold">
@@ -274,7 +296,7 @@ export default function App() {
                         }}
                       />
                       <Line
-                        type="linear"
+                        type="monotone"
                         dataKey="accuracy"
                         stroke="#FFFF00"
                         strokeWidth={2}
@@ -292,7 +314,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* NODE STATUS */}
             <div className="lg:col-span-5 border border-[#FFA028] bg-[#050505] p-2.5 flex flex-col justify-between">
               <div>
                 <div className="text-[#FFA028] text-[11px] font-bold mb-1">
@@ -325,12 +346,12 @@ export default function App() {
               </div>
 
               <div className="text-[#8E8E93] text-[9px] pt-2">
-                STATUS UPDATES AT DISCRETE 1.5S EPOCH INTERVALS
+                STATUS UPDATES AT DISCRETE 2.0S EPOCH INTERVALS
               </div>
             </div>
           </div>
 
-          {/* LOWER ROW */}
+          {/* LOWER ROW: RISK PIPELINE & DYNAMIC TOPOLOGY */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-2">
             <div className="lg:col-span-5 border border-[#00C8FF] bg-[#050505] p-2.5 flex flex-col justify-between">
               <div>
@@ -399,7 +420,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* TOPOLOGY */}
+            {/* DYNAMIC TOPOLOGY */}
             <div className="lg:col-span-7 border border-[#00C8FF] bg-[#050505] p-2.5 flex flex-col justify-between">
               <div className="flex justify-between items-center mb-1">
                 <div>
@@ -407,7 +428,7 @@ export default function App() {
                     GRAPH TOPOLOGY — 14 WALLET SCAM CLUSTER
                   </div>
                   <div className="text-[#8E8E93] text-[9px]">
-                    CROSS-BANK CO-OCCURRENCE NETWORK TOPOLOGY
+                    CROSS-BANK CO-OCCURRENCE NETWORK TOPOLOGY ({clusterEdges.length} DETECTED EDGES)
                   </div>
                 </div>
                 <span className="text-[10px] text-[#00C8FF]">
@@ -424,16 +445,16 @@ export default function App() {
                       y1={e.from.y}
                       x2={e.to.x}
                       y2={e.to.y}
-                      stroke={isGlobalHighRisk ? "#FF3B30" : "#00C8FF"}
-                      strokeWidth={1}
-                      strokeDasharray={isGlobalHighRisk ? "none" : "3,3"}
-                      opacity={0.4}
+                      stroke={e.from.isFlagged && e.to.isFlagged ? "#FF3B30" : "#00C8FF"}
+                      strokeWidth={e.from.isFlagged && e.to.isFlagged ? 1.5 : 1}
+                      strokeDasharray={e.from.isFlagged ? "none" : "3,3"}
+                      opacity={e.from.isFlagged ? 0.8 : 0.35}
                     />
                   ))}
 
                   {clusterGraphNodes.map((n) => {
                     const isSelected = selectedWallet?.id === n.id;
-                    const nodeColor = isGlobalHighRisk ? "#FF3B30" : "#00FF00";
+                    const nodeColor = n.isFlagged ? "#FF3B30" : "#00FF00";
 
                     return (
                       <g
@@ -453,7 +474,7 @@ export default function App() {
                           x={n.x}
                           y={n.y + 14}
                           textAnchor="middle"
-                          fill={isSelected ? "#FFFF00" : "#8E8E93"}
+                          fill={isSelected ? "#FFFF00" : (n.isFlagged ? "#FF3B30" : "#8E8E93")}
                           fontSize={8}
                           fontFamily="monospace"
                         >
