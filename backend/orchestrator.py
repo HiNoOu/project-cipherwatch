@@ -130,11 +130,12 @@ def run_demo(
             institutions_status = {}
             for i, client in enumerate(clients):
                 node_key = f"NODE_{chr(65 + i)}"
+                # Node D (4th item, index 3) blinks SYNCING every 3 rounds
+                node_status = "SYNCING" if (i == 3 and round_num % 3 == 0) else "SYNCED"
                 institutions_status[node_key] = {
-                    "label": INSTITUTION_LABELS.get(client.node_id, "INSTITUTION"),
-                    "status": "SYNCED" if (i != n_institutions - 1 or round_num % 3 != 0) else "SYNCING",
+                    "label": INSTITUTION_LABELS.get(client.node_id, f"NODE {chr(65 + i)}"),
+                    "status": node_status,
                 }
-
             clusters_flagged = int(1 if round_num < 6 else (2 if round_num < 14 else 3))
 
             block = chain.append(
