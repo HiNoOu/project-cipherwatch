@@ -9,8 +9,9 @@ import {
   CartesianGrid,
 } from "recharts";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "https://project-cipherwatch-production.up.railway.app";
-const API_BASE_URL = API_BASE;
+// Appended /api so all routes match the FastAPI backend Swagger specs
+const BASE_HOST = import.meta.env.VITE_API_BASE_URL || "https://project-cipherwatch-production.up.railway.app";
+const API_BASE = BASE_HOST.endsWith("/api") ? BASE_HOST : `${BASE_HOST}/api`;
 
 export default function App() {
   const [status, setStatus] = useState(null);
@@ -38,7 +39,7 @@ export default function App() {
       setAuditLog(auditRes);
       setIsRunning(Boolean(statusRes?.live));
     } catch (err) {
-      // Backend not ready
+      // Backend polling error
     }
   };
 
@@ -467,7 +468,7 @@ export default function App() {
           <span>
             PRESS <span className="text-[#FFFF00]">START RUN &lt;GO&gt;</span> FOR FEDERATED TRAINING
           </span>
-          <span className="text-[#00C8FF]">TERMINAL MODE: ACTIVE (PORT 3000)</span>
+          <span className="text-[#00C8FF]">TERMINAL MODE: ACTIVE</span>
         </div>
       </div>
     </div>
