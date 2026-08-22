@@ -36,8 +36,17 @@ export default function App() {
 
       if (statusRes) {
         setStatus(statusRes);
-        // Automatically sync run status on page load/reopen
-        setIsRunning(Boolean(statusRes.live));
+        const r = statusRes.round ?? 0;
+        const total = statusRes.total_rounds || 20;
+
+        // Sync running state safely without race conditions
+        if (r > 0 && r < total) {
+          setIsRunning(true);
+        } else if (r >= total) {
+          setIsRunning(false);
+        } else if (statusRes.live) {
+          setIsRunning(true);
+        }
       }
 
       if (accRes && Array.isArray(accRes.rounds)) {
@@ -56,14 +65,27 @@ export default function App() {
         setAuditLog(auditRes);
       }
     } catch (err) {
-      console.warn("Telemetry polling warning:", err);
+      console.warn("Polling warning:", err);
     }
   }, []);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    fetchDashboardData();
+
+    const interval = setInterval(() => {
+      fetchDashboardData();
+    }, 800);
+
+    return () => {
+      isMountedRef.current = false;
+      clearInterval(interval);
+    };
+  }, [fetchDashboardData]);
 
   const handleStartSimulation = async (e) => {
     if (e) e.preventDefault();
     try {
-      // 1. Flush UI for a fresh manual run
       setIsRunning(true);
       setStatus({
         round: 0,
@@ -79,16 +101,13 @@ export default function App() {
       setAccuracyHistory({ rounds: [], accuracy: [] });
       setAuditLog([]);
 
-      // 2. Trigger fresh background execution
       await fetch(`${API_BASE}/demo/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ n_rounds: 20, round_delay_seconds: 2.0 }),
       });
-
-      setTimeout(fetchDashboardData, 300);
     } catch (err) {
-      console.error("Failed to start run:", err);
+      console.error("Start error:", err);
       setIsRunning(false);
     }
   };
@@ -98,7 +117,6 @@ export default function App() {
   const globalScore = heroCluster?.global_score ?? 0;
   const isGlobalHighRisk = globalScore >= 0.5;
 
-  // 14-Node Dynamic Topology Layout
   const clusterGraphNodes = useMemo(() => {
     const nodes = [];
     const count = heroCluster?.wallet_count || 14;
@@ -108,8 +126,9 @@ export default function App() {
 
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * 2 * Math.PI;
-      // Nodes progressively get flagged as rounds advance
-      const isNodeFlagged = currentRound > 4 && (i < Math.floor((currentRound / 20) * count) || isGlobalHighRisk);
+      const isNodeFlagged =
+        currentRound > 4 &&
+        (i < Math.floor((currentRound / totalRounds) * count) || isGlobalHighRisk);
 
       nodes.push({
         id: `0x7a2...f${(i + 1).toString(16)}`,
@@ -122,9 +141,8 @@ export default function App() {
       });
     }
     return nodes;
-  }, [heroCluster?.wallet_count, currentRound, isGlobalHighRisk]);
+  }, [heroCluster?.wallet_count, currentRound, totalRounds, isGlobalHighRisk]);
 
-  // Edges progressively discovered across rounds
   const clusterEdges = useMemo(() => {
     const edges = [];
     const count = clusterGraphNodes.length;
@@ -132,22 +150,18 @@ export default function App() {
       edges.push({
         from: clusterGraphNodes[i],
         to: clusterGraphNodes[(i + 1) % count],
-        active: true,
       });
 
-      // Cross-syndicate edges unlock as consensus grows
       if (i % 3 === 0 && currentRound >= 5) {
         edges.push({
           from: clusterGraphNodes[i],
           to: clusterGraphNodes[(i + 5) % count],
-          active: true,
         });
       }
       if (i % 4 === 0 && currentRound >= 12) {
         edges.push({
           from: clusterGraphNodes[i],
           to: clusterGraphNodes[(i + 7) % count],
-          active: true,
         });
       }
     }
@@ -166,7 +180,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#000000] text-[#FFFFFF] font-mono text-[12px] p-2 select-none">
       <div className="border-2 border-[#FFA028] bg-[#000000] shadow-2xl">
-        {/* BLOOMBERG TERMINAL TOP HEADER */}
+        {/* TOP BAR */}
         <div className="bg-[#FFA028] text-[#000000] px-3 py-1.5 font-bold flex justify-between items-center text-[13px] tracking-wider border-b border-[#FFA028]">
           <div className="flex items-center gap-2">
             <span>FTIC &lt;GO&gt; | FEDERATED THREAT INTELLIGENCE CONSOLE</span>
@@ -197,7 +211,7 @@ export default function App() {
         </div>
 
         <div className="p-2 space-y-2">
-          {/* TOP METRICS ROW */}
+          {/* TOP METRICS */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             <div className="border border-[#00C8FF] bg-[#050505] p-2.5">
               <div className="text-[#00C8FF] text-[10px] uppercase">GLOBAL ACCURACY</div>
@@ -237,8 +251,9 @@ export default function App() {
             </div>
           </div>
 
-          {/* MIDDLE ROW: CHART & INSTITUTION TABLE */}
+          {/* MIDDLE ROW */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-2">
+            {/* ACCURACY CHART */}
             <div className="lg:col-span-7 border border-[#FFA028] bg-[#050505] p-2.5 flex flex-col justify-between">
               <div>
                 <div className="text-[#FFA028] text-[11px] font-bold">
@@ -297,6 +312,7 @@ export default function App() {
               </div>
             </div>
 
+            {/* NODE STATUS */}
             <div className="lg:col-span-5 border border-[#FFA028] bg-[#050505] p-2.5 flex flex-col justify-between">
               <div>
                 <div className="text-[#FFA028] text-[11px] font-bold mb-1">
@@ -334,8 +350,9 @@ export default function App() {
             </div>
           </div>
 
-          {/* LOWER ROW: RISK PIPELINE & DYNAMIC TOPOLOGY */}
+          {/* LOWER ROW */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-2">
+            {/* RISK PANEL */}
             <div className="lg:col-span-5 border border-[#00C8FF] bg-[#050505] p-2.5 flex flex-col justify-between">
               <div>
                 <div className="text-[#FFA028] text-[11px] font-bold">
@@ -403,7 +420,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* DYNAMIC TOPOLOGY */}
+            {/* GRAPH TOPOLOGY */}
             <div className="lg:col-span-7 border border-[#00C8FF] bg-[#050505] p-2.5 flex flex-col justify-between">
               <div className="flex justify-between items-center mb-1">
                 <div>
@@ -421,19 +438,22 @@ export default function App() {
 
               <div className="relative border border-[#222222] bg-[#000000] h-52 flex items-center justify-center overflow-hidden">
                 <svg viewBox="0 0 460 220" className="w-full h-full">
-                  {clusterEdges.map((e, idx) => (
-                    <line
-                      key={idx}
-                      x1={e.from.x}
-                      y1={e.from.y}
-                      x2={e.to.x}
-                      y2={e.to.y}
-                      stroke={e.from.isFlagged && e.to.isFlagged ? "#FF3B30" : "#00C8FF"}
-                      strokeWidth={e.from.isFlagged && e.to.isFlagged ? 1.5 : 1}
-                      strokeDasharray={e.from.isFlagged ? "none" : "3,3"}
-                      opacity={e.from.isFlagged ? 0.8 : 0.35}
-                    />
-                  ))}
+                  {clusterEdges.map((e, idx) => {
+                    const activeEdge = e.from.isFlagged && e.to.isFlagged;
+                    return (
+                      <line
+                        key={idx}
+                        x1={e.from.x}
+                        y1={e.from.y}
+                        x2={e.to.x}
+                        y2={e.to.y}
+                        stroke={activeEdge ? "#FF3B30" : "#00C8FF"}
+                        strokeWidth={activeEdge ? 1.5 : 1}
+                        strokeDasharray={activeEdge ? "none" : "3,3"}
+                        opacity={activeEdge ? 0.85 : 0.3}
+                      />
+                    );
+                  })}
 
                   {clusterGraphNodes.map((n) => {
                     const isSelected = selectedWallet?.id === n.id;
