@@ -9,6 +9,7 @@ import {
   CartesianGrid,
 } from "recharts";
 
+// MUST start with https://
 const API_BASE = "https://project-cipherwatch-production.up.railway.app/api";
 
 export default function App() {
@@ -19,45 +20,39 @@ export default function App() {
   const [auditLog, setAuditLog] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState(null);
+  
+const fetchDashboardData = async () => {
+  try {
+    const [statusRes, accRes, instRes, heroRes, auditRes] = await Promise.all([
+      fetch(`${API_BASE}/status`).then((r) => r.json()),
+      fetch(`${API_BASE}/accuracy-history`).then((r) => r.json()),
+      fetch(`${API_BASE}/institutions`).then((r) => r.json()),
+      fetch(`${API_BASE}/hero-cluster`).then((r) => r.json()),
+      fetch(`${API_BASE}/audit-log`).then((r) => r.json()),
+    ]);
 
-  const fetchDashboardData = async () => {
-    try {
-      const [statusRes, accRes, instRes, heroRes, auditRes] = await Promise.all([
-        fetch(`${API_BASE}/status`).then((r) => r.json()),
-        fetch(`${API_BASE}/accuracy-history`).then((r) => r.json()),
-        fetch(`${API_BASE}/institutions`).then((r) => r.json()),
-        fetch(`${API_BASE}/hero-cluster`).then((r) => r.json()),
-        fetch(`${API_BASE}/audit-log`).then((r) => r.json()),
-      ]);
-
-      if (statusRes) {
-        setStatus(statusRes);
-        setIsRunning(Boolean(statusRes.live || statusRes.is_running || statusRes.running));
-      }
-      if (accRes) setAccuracyHistory(accRes);
-      if (instRes) setInstitutions(instRes);
-      if (heroRes) setHeroCluster(heroRes);
-      if (auditRes) setAuditLog(Array.isArray(auditRes) ? auditRes : []);
-    } catch (err) {
-      console.warn("Polling error:", err);
+    if (statusRes) {
+      setStatus(statusRes);
+      setIsRunning(Boolean(statusRes.live || statusRes.is_running));
     }
-  };
+    if (accRes) setAccuracyHistory(accRes);
+    if (instRes) setInstitutions(instRes);
+    if (heroRes) setHeroCluster(heroRes);
+    if (auditRes) setAuditLog(Array.isArray(auditRes) ? auditRes : []);
+  } catch (err) {
+    // Network error
+  }
+};
 
-  useEffect(() => {
+const handleStartSimulation = async () => {
+  try {
+    setIsRunning(true);
+    await fetch(`${API_BASE}/demo/start`, { method: "POST" });
     fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleStartSimulation = async () => {
-    try {
-      setIsRunning(true);
-      await fetch(`${API_BASE}/demo/start`, { method: "POST" });
-      fetchDashboardData();
-    } catch (err) {
-      console.error("Failed to start run:", err);
-    }
-  };
+  } catch (err) {
+    console.error("Failed to start run:", err);
+  }
+};
 
   // 14-Node Synthetic Graph Layout
   const clusterGraphNodes = useMemo(() => {
