@@ -22,7 +22,7 @@ export default function App() {
 
   const isMountedRef = useRef(true);
 
-  const fetchDashboardData = useCallback(async () => {
+ const fetchDashboardData = useCallback(async () => {
     try {
       const [statusRes, accRes, instRes, heroRes, auditRes] = await Promise.all([
         fetch(`${API_BASE}/status`).then((r) => (r.ok ? r.json() : null)),
@@ -36,7 +36,14 @@ export default function App() {
 
       if (statusRes) {
         setStatus(statusRes);
-        setIsRunning(Boolean(statusRes.live));
+        // Only flip running off if round is done or explicitly idle
+        if (statusRes.round > 0 && statusRes.round < (statusRes.total_rounds || 20)) {
+          setIsRunning(true);
+        } else if (statusRes.round >= (statusRes.total_rounds || 20)) {
+          setIsRunning(false);
+        } else {
+          setIsRunning(Boolean(statusRes.live));
+        }
       }
 
       if (accRes && Array.isArray(accRes.rounds)) {
@@ -74,31 +81,35 @@ export default function App() {
     };
   }, [fetchDashboardData]);
 
-  const handleStartSimulation = async () => {
+ const handleStartSimulation = async (e) => {
+    if (e) e.preventDefault();
+    console.log("Triggering start simulation...");
+    
     try {
-      // 1. Instantly flush previous cycle from UI
       setIsRunning(true);
-      setStatus({
-        round: 0,
-        total_rounds: 20,
-        global_accuracy: null,
-        accuracy_delta: 0,
-        institutions_online: 4,
-        institutions_total: 4,
-        clusters_flagged: 0,
-        chain_integrity: { verified_blocks: 0, total_blocks: 20 },
-        live: true,
-      });
-      setAccuracyHistory({ rounds: [], accuracy: [] });
-      setAuditLog([]);
-      setHeroCluster({
-        wallet_count: 14,
-        local_score: 0.4,
-        local_label: "LOW-RISK",
-        global_score: 0.0,
-        global_label: "AWAITING",
+
+      // Make the POST request directly
+      const response = await fetch(`${API_BASE}/demo/start`, {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+        },
       });
 
+      const result = await response.json();
+      console.log("Start response received:", result);
+
+      // Wait 300ms for thread initialization before first sync
+      setTimeout(() => {
+        fetchDashboardData();
+      }, 300);
+
+    } catch (err) {
+      console.error("Failed to start run:", err);
+      setIsRunning(false);
+    }
+  };
       // 2. Trigger fresh background execution
       await fetch(`${API_BASE}/demo/start`, {
         method: "POST",
