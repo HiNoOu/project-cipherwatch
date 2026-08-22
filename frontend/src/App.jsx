@@ -22,7 +22,7 @@ export default function App() {
 
   const isMountedRef = useRef(true);
 
- const fetchDashboardData = useCallback(async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       const [statusRes, accRes, instRes, heroRes, auditRes] = await Promise.all([
         fetch(`${API_BASE}/status`).then((r) => (r.ok ? r.json() : null)),
@@ -36,7 +36,6 @@ export default function App() {
 
       if (statusRes) {
         setStatus(statusRes);
-        // Only flip running off if round is done or explicitly idle
         if (statusRes.round > 0 && statusRes.round < (statusRes.total_rounds || 20)) {
           setIsRunning(true);
         } else if (statusRes.round >= (statusRes.total_rounds || 20)) {
@@ -62,7 +61,7 @@ export default function App() {
         setAuditLog(auditRes);
       }
     } catch (err) {
-      console.warn("Telemetry sync warning:", err);
+      console.warn("Telemetry polling warning:", err);
     }
   }, []);
 
@@ -70,7 +69,6 @@ export default function App() {
     isMountedRef.current = true;
     fetchDashboardData();
 
-    // Constant 750ms polling loop
     const interval = setInterval(() => {
       fetchDashboardData();
     }, 750);
@@ -81,50 +79,37 @@ export default function App() {
     };
   }, [fetchDashboardData]);
 
- const handleStartSimulation = async (e) => {
+  const handleStartSimulation = async (e) => {
     if (e) e.preventDefault();
-    console.log("Triggering start simulation...");
-    
     try {
       setIsRunning(true);
 
-      // Make the POST request directly
       const response = await fetch(`${API_BASE}/demo/start`, {
         method: "POST",
         headers: {
           "Accept": "application/json",
           "Content-Type": "application/json",
         },
+        body: JSON.stringify({
+          n_institutions: 4,
+          n_rounds: 20,
+          round_delay_seconds: 1.5,
+        }),
       });
 
-      const result = await response.json();
-      console.log("Start response received:", result);
-
-      // Wait 300ms for thread initialization before first sync
-      setTimeout(() => {
-        fetchDashboardData();
-      }, 300);
-
+      if (response.ok) {
+        setTimeout(() => {
+          fetchDashboardData();
+        }, 300);
+      } else {
+        setIsRunning(false);
+      }
     } catch (err) {
       console.error("Failed to start run:", err);
       setIsRunning(false);
     }
   };
-      // 2. Trigger fresh background execution
-      await fetch(`${API_BASE}/demo/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
 
-      // 3. Trigger immediate state pull
-      fetchDashboardData();
-    } catch (err) {
-      console.error("Failed to start federated run:", err);
-      setIsRunning(false);
-    }
-  };
-
-  // 14-Node Topology Ring
   const clusterGraphNodes = useMemo(() => {
     const nodes = [];
     const count = heroCluster?.wallet_count || 14;
@@ -246,7 +231,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* MIDDLE ROW: CHART & NODE STATUS */}
+          {/* MIDDLE ROW */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-2">
             {/* ACCURACY CHART */}
             <div className="lg:col-span-7 border border-[#FFA028] bg-[#050505] p-2.5 flex flex-col justify-between">
@@ -307,7 +292,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* NODE STATUS TABLE */}
+            {/* NODE STATUS */}
             <div className="lg:col-span-5 border border-[#FFA028] bg-[#050505] p-2.5 flex flex-col justify-between">
               <div>
                 <div className="text-[#FFA028] text-[11px] font-bold mb-1">
@@ -345,7 +330,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* LOWER ROW: CLUSTER RISK PROGRESSION & INTERACTIVE GRAPH */}
+          {/* LOWER ROW */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-2">
             <div className="lg:col-span-5 border border-[#00C8FF] bg-[#050505] p-2.5 flex flex-col justify-between">
               <div>
@@ -414,7 +399,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* INTERACTIVE TOPOLOGY GRAPH */}
+            {/* TOPOLOGY */}
             <div className="lg:col-span-7 border border-[#00C8FF] bg-[#050505] p-2.5 flex flex-col justify-between">
               <div className="flex justify-between items-center mb-1">
                 <div>
