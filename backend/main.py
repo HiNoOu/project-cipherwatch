@@ -1,10 +1,9 @@
 import asyncio
 import logging
-from contextlib import asynccontextmanager
-from typing import Optional
+import threading
+from typing import Any, Dict
 import numpy as np
-from pydantic import BaseModel
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from hash_chain import HashChain
@@ -23,7 +22,7 @@ INSTITUTION_LABELS = {
 }
 N_INSTITUTIONS = 4
 N_SAMPLES = 5000
-DP_NOISE_MULTIPLIER = 0.05  
+DP_NOISE_MULTIPLIER = 0.05
 
 class DashboardState:
     def __init__(self):
@@ -57,14 +56,13 @@ class DashboardState:
 
 
 STATE = DashboardState()
-_current_task = None
-
 _clients_data = None
 _X_test = None
 _y_test = None
 _hero_dampened = None
 _hero_true = None
 _hero_y = None
+_worker_thread = None
 
 
 def _init_data():
@@ -85,56 +83,52 @@ def _risk_label(score):
     return "HIGH-RISK" if score >= 0.5 else "LOW-RISK"
 
 
-async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
+def _simulation_thread_target(n_rounds: int, round_delay: float):
+    import time
     STATE.is_running = True
-    loop = asyncio.get_event_loop()
     try:
-        await loop.run_in_executor(None, _init_data)
-
+        _init_data()
         chain = HashChain()
         global_model = RiskClassifier()
         global_weights = get_weights(global_model)
-        solo_model = RiskClassifier()  
+        solo_model = RiskClassifier()
 
         for r in range(1, n_rounds + 1):
-            
-            def _do_round():
-                nonlocal global_weights
-                fit_results = []
-                for X, y, wallet_ids, cluster_map in _clients_data:
-                    m = RiskClassifier()
-                    set_weights(m, global_weights)
-                    train_one_epoch(m, X, y)
-                    noised = clip_and_noise_update(
-                        global_weights, get_weights(m),
-                        clip_norm=1.0, noise_multiplier=DP_NOISE_MULTIPLIER,
-                    )
-                    fit_results.append((noised, len(X)))
+            if not STATE.is_running:
+                break
 
-                total = sum(n for _, n in fit_results)
-                n_layers = len(fit_results[0][0])
-                averaged = [
-                    sum(w[i] * (n / total) for w, n in fit_results)
-                    for i in range(n_layers)
-                ]
-                global_weights = averaged
-                set_weights(global_model, global_weights)
-
-                train_one_epoch(solo_model, _clients_data[0][0], _clients_data[0][1])
-
-                _, acc = evaluate(global_model, _X_test, _y_test)
-                local_hero = float(np.mean(predict_risk_scores(solo_model, _hero_dampened))) if _hero_dampened is not None else None
-                global_hero = float(np.mean(predict_risk_scores(global_model, _hero_true))) if _hero_true is not None else None
-
-                risk_scores = predict_risk_scores(global_model, _clients_data[0][0])
-                clusters = cluster_wallets(
-                    _clients_data[0][0], _clients_data[0][2],
-                    eps=0.9, min_samples=3,
-                    risk_scores=risk_scores, risk_score_floor=0.5,
+            fit_results = []
+            for X, y, wallet_ids, cluster_map in _clients_data:
+                m = RiskClassifier()
+                set_weights(m, global_weights)
+                train_one_epoch(m, X, y)
+                noised = clip_and_noise_update(
+                    global_weights, get_weights(m),
+                    clip_norm=1.0, noise_multiplier=DP_NOISE_MULTIPLIER,
                 )
-                return acc, local_hero, global_hero, len(clusters)
+                fit_results.append((noised, len(X)))
 
-            acc, local_hero, global_hero, n_clusters = await loop.run_in_executor(None, _do_round)
+            total = sum(n for _, n in fit_results)
+            n_layers = len(fit_results[0][0])
+            averaged = [
+                sum(w[i] * (n / total) for w, n in fit_results)
+                for i in range(n_layers)
+            ]
+            global_weights = averaged
+            set_weights(global_model, global_weights)
+
+            train_one_epoch(solo_model, _clients_data[0][0], _clients_data[0][1])
+
+            _, acc = evaluate(global_model, _X_test, _y_test)
+            local_hero = float(np.mean(predict_risk_scores(solo_model, _hero_dampened))) if _hero_dampened is not None else None
+            global_hero = float(np.mean(predict_risk_scores(global_model, _hero_true))) if _hero_true is not None else None
+
+            risk_scores = predict_risk_scores(global_model, _clients_data[0][0])
+            clusters = cluster_wallets(
+                _clients_data[0][0], _clients_data[0][2],
+                eps=0.9, min_samples=3,
+                risk_scores=risk_scores, risk_score_floor=0.5,
+            )
 
             prev_acc = STATE.global_accuracy if STATE.global_accuracy is not None else acc
             delta = round(acc - prev_acc, 4)
@@ -148,14 +142,14 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
             }
 
             epsilon = epsilon_after_rounds(DP_NOISE_MULTIPLIER, r)
-            block = chain.append(r, {"global_accuracy": round(acc, 4), "clusters_flagged": n_clusters})
+            block = chain.append(r, {"global_accuracy": round(acc, 4), "clusters_flagged": len(clusters)})
 
             STATE.round = r
             STATE.accuracy_delta = delta
             STATE.global_accuracy = round(acc, 4)
             STATE.accuracy_history.append(STATE.global_accuracy)
             STATE.institutions = inst_status
-            STATE.clusters_flagged = n_clusters
+            STATE.clusters_flagged = len(clusters)
             STATE.privacy_epsilon = epsilon
             STATE.chain_integrity = {"verified_blocks": r, "total_blocks": n_rounds}
             STATE.hero_cluster = {
@@ -171,66 +165,58 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
                 "hash": block.hash[:16] + "...", "status": "VERIFIED",
             })
 
-            await asyncio.sleep(round_delay)
+            time.sleep(round_delay)
 
-    except asyncio.CancelledError:
-        pass
     except Exception:
-        logger.exception("run_simulation_worker crashed")
+        logger.exception("Simulation crashed")
     finally:
         STATE.is_running = False
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global _current_task
-    await asyncio.sleep(1.0)
-    _current_task = asyncio.create_task(run_simulation_worker(n_rounds=20, round_delay=2.0))
-    yield
-    if _current_task and not _current_task.done():
-        _current_task.cancel()
+def _launch_worker(n_rounds=20, round_delay=2.0):
+    global _worker_thread
+    if _worker_thread and _worker_thread.is_alive():
+        return
+    STATE.reset()
+    _worker_thread = threading.Thread(
+        target=_simulation_thread_target,
+        args=(n_rounds, round_delay),
+        daemon=True,
+    )
+    _worker_thread.start()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://cipherwatch.up.railway.app",
-        "http://localhost:5173",
-        "http://localhost:3000",
-    ],
-    allow_origin_regex=r"https://.*\.up\.railway\.app",
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-class DemoStartPayload(BaseModel):
-    n_rounds: Optional[int] = 20
-    round_delay_seconds: Optional[float] = 2.0
-
-
-@app.api_route("/api/demo/start", methods=["GET", "POST"])
-async def start_demo(payload: Optional[DemoStartPayload] = None):
-    n_rounds = payload.n_rounds if payload and payload.n_rounds else 20
-    delay = payload.round_delay_seconds if payload and payload.round_delay_seconds else 2.0
-
-    global _current_task
-    if _current_task and not _current_task.done():
-        _current_task.cancel()
-    STATE.reset()
-    _current_task = asyncio.create_task(run_simulation_worker(n_rounds=n_rounds, round_delay=delay))
+@app.api_route("/api/demo/start", methods=["GET", "POST", "OPTIONS"])
+async def start_demo(request: Request):
+    n_rounds = 20
+    round_delay = 2.0
+    if request.method == "POST":
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                n_rounds = body.get("n_rounds", 20)
+                round_delay = body.get("round_delay_seconds", 2.0)
+        except Exception:
+            pass
+    _launch_worker(n_rounds, round_delay)
     return {"started": True, "live": True}
 
 
 @app.get("/api/status")
 async def get_status():
-    global _current_task
     if not STATE.is_running and STATE.round == 0:
-        if _current_task is None or _current_task.done():
-            _current_task = asyncio.create_task(run_simulation_worker(n_rounds=20, round_delay=2.0))
+        _launch_worker(20, 2.0)
 
     return {
         "global_accuracy": STATE.global_accuracy,
