@@ -1,7 +1,8 @@
 import asyncio
 import logging
 import threading
-from typing import Any, Dict
+import time
+from typing import Optional
 import numpy as np
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,7 +22,7 @@ INSTITUTION_LABELS = {
     4: "BANK / SETTLEMENT (Nexus)",
 }
 N_INSTITUTIONS = 4
-N_SAMPLES = 5000
+N_SAMPLES = 2000
 DP_NOISE_MULTIPLIER = 0.05
 
 class DashboardState:
@@ -63,11 +64,13 @@ _hero_dampened = None
 _hero_true = None
 _hero_y = None
 _worker_thread = None
+_lock = threading.Lock()
 
 
 def _init_data():
     global _clients_data, _X_test, _y_test, _hero_dampened, _hero_true, _hero_y
     if _clients_data is None:
+        print("--> Generating synthetic dataset in worker thread...")
         _clients_data = [
             insti_Dataset(node_id=i + 1, n_institutions=N_INSTITUTIONS, n_samples=N_SAMPLES,
                           include_hero=(i == 0))
@@ -75,6 +78,7 @@ def _init_data():
         ]
         _X_test, _y_test = generate_holdout_test_set()
         _hero_dampened, _hero_true, _hero_y = generate_hero_cluster_views(n_total_samples=N_SAMPLES)
+        print("--> Synthetic dataset generation complete!")
 
 
 def _risk_label(score):
@@ -84,7 +88,7 @@ def _risk_label(score):
 
 
 def _simulation_thread_target(n_rounds: int, round_delay: float):
-    import time
+    print(f"--> Starting simulation run for {n_rounds} rounds...")
     STATE.is_running = True
     try:
         _init_data()
@@ -97,6 +101,7 @@ def _simulation_thread_target(n_rounds: int, round_delay: float):
             if not STATE.is_running:
                 break
 
+            print(f"--> Executing Round {r}/{n_rounds}")
             fit_results = []
             for X, y, wallet_ids, cluster_map in _clients_data:
                 m = RiskClassifier()
@@ -167,23 +172,26 @@ def _simulation_thread_target(n_rounds: int, round_delay: float):
 
             time.sleep(round_delay)
 
-    except Exception:
-        logger.exception("Simulation crashed")
+    except Exception as e:
+        logger.exception(f"Simulation crashed with error: {e}")
     finally:
         STATE.is_running = False
+        print("--> Simulation run complete.")
 
 
 def _launch_worker(n_rounds=20, round_delay=2.0):
     global _worker_thread
-    if _worker_thread and _worker_thread.is_alive():
-        return
-    STATE.reset()
-    _worker_thread = threading.Thread(
-        target=_simulation_thread_target,
-        args=(n_rounds, round_delay),
-        daemon=True,
-    )
-    _worker_thread.start()
+    with _lock:
+        if _worker_thread is not None and _worker_thread.is_alive():
+            return False
+        STATE.reset()
+        _worker_thread = threading.Thread(
+            target=_simulation_thread_target,
+            args=(n_rounds, round_delay),
+            daemon=True,
+        )
+        _worker_thread.start()
+        return True
 
 
 app = FastAPI()
@@ -197,6 +205,12 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def startup_event():
+    # Automatically start worker thread on initial boot
+    _launch_worker(n_rounds=20, round_delay=2.0)
+
+
 @app.api_route("/api/demo/start", methods=["GET", "POST", "OPTIONS"])
 async def start_demo(request: Request):
     n_rounds = 20
@@ -205,8 +219,8 @@ async def start_demo(request: Request):
         try:
             body = await request.json()
             if isinstance(body, dict):
-                n_rounds = body.get("n_rounds", 20)
-                round_delay = body.get("round_delay_seconds", 2.0)
+                n_rounds = int(body.get("n_rounds", 20))
+                round_delay = float(body.get("round_delay_seconds", 2.0))
         except Exception:
             pass
     _launch_worker(n_rounds, round_delay)
