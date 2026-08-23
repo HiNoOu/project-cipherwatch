@@ -48,7 +48,7 @@ export default function App() {
         if (res.ok) {
           const data = await res.json();
           // If the backend has just booted and is sitting idle at round 0, kick off the loop
-          if (!data.live && data.round === 0 && !triggered) {
+          if (!data.live && (data.round === 0 || data.round >= data.total_rounds) && !triggered) {
             triggered = true;
             await triggerEngineStart();
           }
