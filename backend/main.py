@@ -85,10 +85,12 @@ def _risk_label(score):
 
 async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
     STATE.is_running = True
+    loop = asyncio.get_event_loop()
     try:
-        _init_data()
-        chain = HashChain()
+        # Generate initial heavy dataset in thread pool to prevent blocking event loop
+        await loop.run_in_executor(None, _init_data)
 
+        chain = HashChain()
         global_model = RiskClassifier()
         global_weights = get_weights(global_model)
         solo_model = RiskClassifier()  
@@ -131,7 +133,7 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
                 )
                 return acc, local_hero, global_hero, len(clusters)
 
-            acc, local_hero, global_hero, n_clusters = await asyncio.get_event_loop().run_in_executor(None, _do_round)
+            acc, local_hero, global_hero, n_clusters = await loop.run_in_executor(None, _do_round)
 
             prev_acc = STATE.global_accuracy if STATE.global_accuracy is not None else acc
             delta = round(acc - prev_acc, 4)
@@ -145,7 +147,6 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
             }
 
             epsilon = epsilon_after_rounds(DP_NOISE_MULTIPLIER, r)
-
             block = chain.append(r, {"global_accuracy": round(acc, 4), "clusters_flagged": n_clusters})
 
             STATE.round = r
@@ -182,6 +183,8 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _current_task
+    # Delay initialization slightly so Railway port binding succeeds immediately
+    await asyncio.sleep(1.0)
     _current_task = asyncio.create_task(run_simulation_worker(n_rounds=20, round_delay=2.0))
     yield
     if _current_task and not _current_task.done():
@@ -217,7 +220,6 @@ async def start_demo(n_rounds: int = 20, round_delay_seconds: float = 2.0):
 @app.get("/api/status")
 async def get_status():
     global _current_task
-    # If the app was sleeping or uninitialized, kick off the simulation on first request
     if not STATE.is_running and STATE.round == 0:
         if _current_task is None or _current_task.done():
             _current_task = asyncio.create_task(run_simulation_worker(n_rounds=20, round_delay=2.0))
