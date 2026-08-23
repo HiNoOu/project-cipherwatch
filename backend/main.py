@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +9,8 @@ from model import RiskClassifier, get_weights, set_weights, train_one_epoch, eva
 from synthetic_data import insti_Dataset, generate_holdout_test_set, generate_hero_cluster_views, Hero_ClusterID
 from entity_resolution import cluster_wallets, evaluate_clustering
 from dp import clip_and_noise_update, epsilon_after_rounds
+
+logger = logging.getLogger("uvicorn.error")
 
 app = FastAPI()
 
@@ -92,12 +95,13 @@ def _risk_label(score):
 
 async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
     STATE.is_running = True
-    _init_data()
-    chain = HashChain()
+    try:
+        _init_data()
+        chain = HashChain()
 
-    global_model = RiskClassifier()
-    global_weights = get_weights(global_model)
-    solo_model = RiskClassifier()  
+        global_model = RiskClassifier()
+        global_weights = get_weights(global_model)
+        solo_model = RiskClassifier()  
 
     # --- POST-DEMO ACTIVATION (do this only after presentation day) ---
     # Switches from a fixed 20-round cycle that resets on every restart, to an
@@ -112,7 +116,6 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
     #      (there isn't one currently inside this loop — this is a new line to add)
     #   3. Uncomment the two history-cap lines marked below, right before asyncio.sleep
     #   4. In start_demo() and auto_start(), drop the n_rounds param — it's no longer meaningful
-    try:
         for r in range(1, n_rounds + 1):  # POST-DEMO: replace with `r = 0` + `while True:` / `r += 1`
             
             def _do_round():
@@ -197,6 +200,8 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
 
     except asyncio.CancelledError:
         pass
+    except Exception:
+        logger.exception("run_simulation_worker crashed")
     finally:
         STATE.is_running = False
 
