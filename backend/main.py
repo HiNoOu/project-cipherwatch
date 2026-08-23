@@ -179,20 +179,11 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
         STATE.is_running = False
 
 
-async def _background_starter():
-    # Allow uvicorn to finish binding ports and accepting requests
-    await asyncio.sleep(0.5)
-    global _current_task
-    STATE.reset()
-    _current_task = asyncio.create_task(run_simulation_worker(n_rounds=20, round_delay=2.0))
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Fire and forget the background start
-    asyncio.create_task(_background_starter())
-    yield
     global _current_task
+    _current_task = asyncio.create_task(run_simulation_worker(n_rounds=20, round_delay=2.0))
+    yield
     if _current_task and not _current_task.done():
         _current_task.cancel()
 
@@ -225,6 +216,12 @@ async def start_demo(n_rounds: int = 20, round_delay_seconds: float = 2.0):
 
 @app.get("/api/status")
 async def get_status():
+    global _current_task
+    # If the app was sleeping or uninitialized, kick off the simulation on first request
+    if not STATE.is_running and STATE.round == 0:
+        if _current_task is None or _current_task.done():
+            _current_task = asyncio.create_task(run_simulation_worker(n_rounds=20, round_delay=2.0))
+
     return {
         "global_accuracy": STATE.global_accuracy,
         "accuracy_delta": STATE.accuracy_delta,
