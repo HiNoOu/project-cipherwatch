@@ -21,20 +21,51 @@ export default function App() {
   const [selectedWallet, setSelectedWallet] = useState(null);
 
   const isMountedRef = useRef(true);
-  const autoStartAttemptedRef = useRef(false);
 
-  const triggerStartDemo = useCallback(async () => {
+  // Dedicated function to initiate the training loop on backend
+  const triggerEngineStart = useCallback(async () => {
     try {
       await fetch(`${API_BASE}/demo/start`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ n_rounds: 20, round_delay_seconds: 2.0 }),
       });
     } catch (err) {
-      console.warn("Auto-start trigger failed:", err);
+      console.warn("Could not reach demo/start endpoint directly:", err);
     }
   }, []);
 
+  // 1. One-time startup effect on load: verifies backend status and force-triggers if cold
+  useEffect(() => {
+    let triggered = false;
+
+    const bootstrapBackend = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/status`);
+        if (res.ok) {
+          const data = await res.json();
+          // If the backend has just booted and is sitting idle at round 0, kick off the loop
+          if (!data.live && data.round === 0 && !triggered) {
+            triggered = true;
+            await triggerEngineStart();
+          }
+        }
+      } catch (e) {
+        // Fallback: If status fails or times out during container wake-up, attempt demo trigger directly
+        if (!triggered) {
+          triggered = true;
+          await triggerEngineStart();
+        }
+      }
+    };
+
+    bootstrapBackend();
+  }, [triggerEngineStart]);
+
+  // 2. High-frequency dashboard polling loop
   const fetchDashboardData = useCallback(async () => {
     try {
       const [statusRes, accRes, instRes, heroRes, auditRes] = await Promise.all([
@@ -51,12 +82,6 @@ export default function App() {
         setStatus(statusRes);
         const r = statusRes.round ?? 0;
         const total = statusRes.total_rounds || 20;
-
-        // Auto-wake mechanism: If container wakes up cold at round 0 and idle, start demo once
-        if (!statusRes.live && r === 0 && !autoStartAttemptedRef.current) {
-          autoStartAttemptedRef.current = true;
-          triggerStartDemo();
-        }
 
         if (r > 0 && r < total) {
           setIsRunning(true);
@@ -87,7 +112,7 @@ export default function App() {
     } catch (err) {
       console.warn("Polling warning:", err);
     }
-  }, [triggerStartDemo]);
+  }, []);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -121,7 +146,7 @@ export default function App() {
       setAccuracyHistory({ rounds: [], accuracy: [] });
       setAuditLog([]);
 
-      await triggerStartDemo();
+      await triggerEngineStart();
     } catch (err) {
       console.error("Start error:", err);
       setIsRunning(false);
