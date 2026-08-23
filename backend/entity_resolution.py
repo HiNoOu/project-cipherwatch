@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Dict, Optional, Callable
 import numpy as np
 from sklearn.cluster import DBSCAN
 
@@ -10,12 +12,12 @@ def _standardize(X: np.ndarray) -> np.ndarray:
 
 def cluster_wallets(
     X: np.ndarray,
-    wallet_ids: list[str],
+    wallet_ids: List[str],
     eps: float = 0.9,
     min_samples: int = 3,
-    risk_scores: np.ndarray | None = None,
+    risk_scores: Optional[np.ndarray] = None,
     risk_score_floor: float = 0.5,
-) -> list[list[str]]:
+) -> List[List[str]]:
     
     if risk_scores is not None:
         keep_idx = np.where(risk_scores >= risk_score_floor)[0]
@@ -30,7 +32,7 @@ def cluster_wallets(
 
     labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(Xs)
 
-    clusters: dict[int, list[str]] = {}
+    clusters: Dict[int, List[str]] = {}
     for wid, label in zip(ids, labels):
         if label == -1:
             continue  # noise / not part of any ring
@@ -40,10 +42,10 @@ def cluster_wallets(
 
 
 def local_cluster_risk_score(
-    model_predict_fn,
+    model_predict_fn: Callable,
     X: np.ndarray,
-    wallet_ids: list[str],
-    cluster: list[str],
+    wallet_ids: List[str],
+    cluster: List[str],
 ) -> float:
     id_to_idx = {wid: i for i, wid in enumerate(wallet_ids)}
     idx = [id_to_idx[w] for w in cluster if w in id_to_idx]
@@ -54,8 +56,8 @@ def local_cluster_risk_score(
 
 
 def evaluate_clustering(
-    clusters: list[list[str]],
-    wallet_ids: list[str],
+    clusters: List[List[str]],
+    wallet_ids: List[str],
     y: np.ndarray,
 ) -> dict:
     id_to_idx = {w: i for i, w in enumerate(wallet_ids)}
@@ -64,11 +66,13 @@ def evaluate_clustering(
     majority_risky_clusters = 0
     risky_wallets_found = set()
     for cl in clusters:
-        idxs = [id_to_idx[w] for w in cl]
+        idxs = [id_to_idx[w] for w in cl if w in id_to_idx]
+        if not idxs:
+            continue
         risky_frac = float(np.mean(y[idxs]))
         if risky_frac >= 0.5:
             majority_risky_clusters += 1
-        risky_wallets_found.update(w for w in cl if y[id_to_idx[w]] == 1)
+        risky_wallets_found.update(w for w in cl if w in id_to_idx and y[id_to_idx[w]] == 1)
 
     precision = majority_risky_clusters / len(clusters) if clusters else 0.0
     recall = len(risky_wallets_found) / total_risky if total_risky else 0.0
