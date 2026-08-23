@@ -93,20 +93,7 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
         global_weights = get_weights(global_model)
         solo_model = RiskClassifier()  
 
-        # --- POST-DEMO ACTIVATION (do this only after presentation day) ---
-        # Switches from a fixed 20-round cycle that resets on every restart, to an
-        # indefinite loop that keeps the same weights/chain/history running forever.
-        # Steps to activate:
-        #   1. Replace `for r in range(1, n_rounds + 1):` below with:
-        #       r = 0
-        #       while True:
-        #           r += 1
-        #   2. Add `STATE.total_rounds = r + 5` right after `STATE.round = r` below,
-        #      and delete any line that sets STATE.total_rounds = n_rounds
-        #      (there isn't one currently inside this loop — this is a new line to add)
-        #   3. Uncomment the two history-cap lines marked below, right before asyncio.sleep
-        #   4. In start_demo() and lifespan(), drop the n_rounds param — it's no longer meaningful
-        for r in range(1, n_rounds + 1):  # POST-DEMO: replace with `r = 0` + `while True:` / `r += 1`
+        for r in range(1, n_rounds + 1):
             
             def _do_round():
                 nonlocal global_weights
@@ -162,7 +149,6 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
             block = chain.append(r, {"global_accuracy": round(acc, 4), "clusters_flagged": n_clusters})
 
             STATE.round = r
-            # STATE.total_rounds = r + 5   # POST-DEMO: add this line (see step 2 above)
             STATE.accuracy_delta = delta
             STATE.global_accuracy = round(acc, 4)
             STATE.accuracy_history.append(STATE.global_accuracy)
@@ -183,9 +169,6 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
                 "hash": block.hash[:16] + "...", "status": "VERIFIED",
             })
 
-            # STATE.accuracy_history = STATE.accuracy_history[-200:]   # POST-DEMO: uncap growth guard
-            # STATE.audit_log = STATE.audit_log[:200]                  # POST-DEMO: uncap growth guard
-
             await asyncio.sleep(round_delay)
 
     except asyncio.CancelledError:
@@ -195,18 +178,21 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
     finally:
         STATE.is_running = False
 
-    # POST-DEMO NOTE: STATE.chain_integrity above also references n_rounds
-    # ("total_blocks": n_rounds). Under indefinite mode there's no real
-    # ceiling anymore, so change that to "total_blocks": r instead —
-    # otherwise the audit ledger's total-rounds number stays frozen at 20
-    # forever while the round counter keeps climbing past it.
+
+async def _background_starter():
+    # Allow uvicorn to finish binding ports and accepting requests
+    await asyncio.sleep(0.5)
+    global _current_task
+    STATE.reset()
+    _current_task = asyncio.create_task(run_simulation_worker(n_rounds=20, round_delay=2.0))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _current_task
-    _current_task = asyncio.create_task(run_simulation_worker(n_rounds=20, round_delay=2.0))
+    # Fire and forget the background start
+    asyncio.create_task(_background_starter())
     yield
+    global _current_task
     if _current_task and not _current_task.done():
         _current_task.cancel()
 
@@ -227,7 +213,7 @@ app.add_middleware(
 )
 
 
-@app.post("/api/demo/start")
+@app.api_route("/api/demo/start", methods=["GET", "POST"])
 async def start_demo(n_rounds: int = 20, round_delay_seconds: float = 2.0):
     global _current_task
     if _current_task and not _current_task.done():
