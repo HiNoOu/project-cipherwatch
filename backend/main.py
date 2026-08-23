@@ -1,7 +1,9 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from typing import Optional
 import numpy as np
+from pydantic import BaseModel
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -87,7 +89,6 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
     STATE.is_running = True
     loop = asyncio.get_event_loop()
     try:
-        # Generate initial heavy dataset in thread pool to prevent blocking event loop
         await loop.run_in_executor(None, _init_data)
 
         chain = HashChain()
@@ -183,7 +184,6 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _current_task
-    # Delay initialization slightly so Railway port binding succeeds immediately
     await asyncio.sleep(1.0)
     _current_task = asyncio.create_task(run_simulation_worker(n_rounds=20, round_delay=2.0))
     yield
@@ -207,13 +207,21 @@ app.add_middleware(
 )
 
 
+class DemoStartPayload(BaseModel):
+    n_rounds: Optional[int] = 20
+    round_delay_seconds: Optional[float] = 2.0
+
+
 @app.api_route("/api/demo/start", methods=["GET", "POST"])
-async def start_demo(n_rounds: int = 20, round_delay_seconds: float = 2.0):
+async def start_demo(payload: Optional[DemoStartPayload] = None):
+    n_rounds = payload.n_rounds if payload and payload.n_rounds else 20
+    delay = payload.round_delay_seconds if payload and payload.round_delay_seconds else 2.0
+
     global _current_task
     if _current_task and not _current_task.done():
         _current_task.cancel()
     STATE.reset()
-    _current_task = asyncio.create_task(run_simulation_worker(n_rounds=n_rounds, round_delay=round_delay_seconds))
+    _current_task = asyncio.create_task(run_simulation_worker(n_rounds=n_rounds, round_delay=delay))
     return {"started": True, "live": True}
 
 
