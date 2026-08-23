@@ -5,3 +5,4 @@ uvicorn
 numpy
 scikit-learn
 pydantic
+flwr[simulation]

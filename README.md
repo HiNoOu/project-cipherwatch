@@ -7,7 +7,15 @@
 
 **CipherWatch** is a privacy-preserving, decentralized fraud detection and Anti-Money Laundering (AML) platform designed for financial institutions, cryptocurrency exchanges, and forensic firms. 
 
-By utilizing **Federated Learning (FedAvg)** combined with **Differential Privacy (DP)**, institutions collaboratively train high-accuracy anomaly detection models across siloed transaction datasets without exposing raw customer financial records. All model parameter updates and round evaluations are anchored to an immutable, cryptographic **SHA-256 Hash Chain** for strict regulatory compliance and auditability.
+By utilizing **Federated Learning (FedAvg)** combined with **Differential Privacy (DP)**, institutions collaboratively train anomaly detection models across siloed transaction datasets without exposing raw customer financial records. All model parameter updates and round evaluations are anchored to an immutable, cryptographic **SHA-256 Hash Chain** for auditability.
+
+> **Status: prototype / synthetic benchmark.** All wallets, transactions, and scam-ring labels in this repo are generated synthetically (`synthetic_data.py`), not real financial data. Metrics below are measured against that synthetic held-out set and are meant to demonstrate the pipeline works end-to-end, not to claim real-world fraud-detection performance. The DP noise level currently used trades off toward utility over privacy (see `dp.py` docstring for the actual epsilon this produces) — treat the DP layer as a working mechanism to build on, not a certified privacy guarantee yet.
+
+**Measured results (synthetic benchmark, 4 nodes × 5,000 wallets/node, 20 rounds, 3,000-sample held-out test set):**
+- Federated (FedAvg) accuracy: ~92% at round 1, settling in the high-80s/low-90s range after 20 rounds of non-IID training (see note on client drift below)
+- Solo baseline (single node, no federation): ~80% accuracy on the same held-out set — federation gives a consistent **~7 point lift**
+- Entity resolution (DBSCAN on standardized features, risk-prefiltered): 100% cluster precision, ~80% wallet recall on synthetic scam rings at `eps=0.9`
+- Known limitation: naive FedAvg shows client drift under non-IID node distributions — accuracy peaks early then oscillates rather than monotonically improving. FedProx-style proximal regularization or learning-rate decay would be the next fix, not yet implemented.
 
 ---
 
@@ -50,13 +58,21 @@ flowchart TD
         NC3["DP Gaussian Clipping"]
     end
 
+    subgraph Node_D ["NODE D (Bank / Settlement)"]
+        ND1["Local Data (5k wallets)"]
+        ND2["PyTorch Risk Classifier"]
+        ND3["DP Gaussian Clipping"]
+    end
+
     Central_Server -->|Global Weights| Node_A
     Central_Server -->|Global Weights| Node_B
     Central_Server -->|Global Weights| Node_C
+    Central_Server -->|Global Weights| Node_D
 
     Node_A -->|Noised Updates| Central_Server
     Node_B -->|Noised Updates| Central_Server
     Node_C -->|Noised Updates| Central_Server
+    Node_D -->|Noised Updates| Central_Server
 ```
 
 * **Federated Model (`model.py`):** Multi-Layer Perceptron (MLP) binary classifier scoring wallet behavior across 8 behavioral dimensions (`tx_count`, `burst_score`, `mixer_hop_score`, `night_activity_ratio`, etc.).
