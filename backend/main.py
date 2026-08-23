@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,16 +12,6 @@ from entity_resolution import cluster_wallets, evaluate_clustering
 from dp import clip_and_noise_update, epsilon_after_rounds
 
 logger = logging.getLogger("uvicorn.error")
-
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 INSTITUTION_LABELS = {
     1: "EXCHANGE (Alpha)",
@@ -66,7 +57,6 @@ class DashboardState:
 STATE = DashboardState()
 _current_task = None
 
-
 _clients_data = None
 _X_test = None
 _y_test = None
@@ -103,19 +93,19 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
         global_weights = get_weights(global_model)
         solo_model = RiskClassifier()  
 
-    # --- POST-DEMO ACTIVATION (do this only after presentation day) ---
-    # Switches from a fixed 20-round cycle that resets on every restart, to an
-    # indefinite loop that keeps the same weights/chain/history running forever.
-    # Steps to activate:
-    #   1. Replace `for r in range(1, n_rounds + 1):` below with:
-    #       r = 0
-    #       while True:
-    #           r += 1
-    #   2. Add `STATE.total_rounds = r + 5` right after `STATE.round = r` below,
-    #      and delete any line that sets STATE.total_rounds = n_rounds
-    #      (there isn't one currently inside this loop — this is a new line to add)
-    #   3. Uncomment the two history-cap lines marked below, right before asyncio.sleep
-    #   4. In start_demo() and auto_start(), drop the n_rounds param — it's no longer meaningful
+        # --- POST-DEMO ACTIVATION (do this only after presentation day) ---
+        # Switches from a fixed 20-round cycle that resets on every restart, to an
+        # indefinite loop that keeps the same weights/chain/history running forever.
+        # Steps to activate:
+        #   1. Replace `for r in range(1, n_rounds + 1):` below with:
+        #       r = 0
+        #       while True:
+        #           r += 1
+        #   2. Add `STATE.total_rounds = r + 5` right after `STATE.round = r` below,
+        #      and delete any line that sets STATE.total_rounds = n_rounds
+        #      (there isn't one currently inside this loop — this is a new line to add)
+        #   3. Uncomment the two history-cap lines marked below, right before asyncio.sleep
+        #   4. In start_demo() and lifespan(), drop the n_rounds param — it's no longer meaningful
         for r in range(1, n_rounds + 1):  # POST-DEMO: replace with `r = 0` + `while True:` / `r += 1`
             
             def _do_round():
@@ -212,6 +202,31 @@ async def run_simulation_worker(n_rounds: int = 20, round_delay: float = 2.0):
     # forever while the round counter keeps climbing past it.
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _current_task
+    _current_task = asyncio.create_task(run_simulation_worker(n_rounds=20, round_delay=2.0))
+    yield
+    if _current_task and not _current_task.done():
+        _current_task.cancel()
+
+
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://cipherwatch.up.railway.app",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ],
+    allow_origin_regex=r"https://.*\.up\.railway\.app",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 @app.post("/api/demo/start")
 async def start_demo(n_rounds: int = 20, round_delay_seconds: float = 2.0):
     global _current_task
@@ -220,11 +235,6 @@ async def start_demo(n_rounds: int = 20, round_delay_seconds: float = 2.0):
     STATE.reset()
     _current_task = asyncio.create_task(run_simulation_worker(n_rounds=n_rounds, round_delay=round_delay_seconds))
     return {"started": True, "live": True}
-
-@app.on_event("startup")
-async def auto_start():
-    global _current_task
-    _current_task = asyncio.create_task(run_simulation_worker(n_rounds=20, round_delay=2.0))
 
 
 @app.get("/api/status")
