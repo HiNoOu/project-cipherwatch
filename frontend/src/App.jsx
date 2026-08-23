@@ -21,6 +21,19 @@ export default function App() {
   const [selectedWallet, setSelectedWallet] = useState(null);
 
   const isMountedRef = useRef(true);
+  const autoStartAttemptedRef = useRef(false);
+
+  const triggerStartDemo = useCallback(async () => {
+    try {
+      await fetch(`${API_BASE}/demo/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ n_rounds: 20, round_delay_seconds: 2.0 }),
+      });
+    } catch (err) {
+      console.warn("Auto-start trigger failed:", err);
+    }
+  }, []);
 
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -39,13 +52,20 @@ export default function App() {
         const r = statusRes.round ?? 0;
         const total = statusRes.total_rounds || 20;
 
-        // Sync running state safely without race conditions
+        // Auto-wake mechanism: If container wakes up cold at round 0 and idle, start demo once
+        if (!statusRes.live && r === 0 && !autoStartAttemptedRef.current) {
+          autoStartAttemptedRef.current = true;
+          triggerStartDemo();
+        }
+
         if (r > 0 && r < total) {
           setIsRunning(true);
         } else if (r >= total) {
           setIsRunning(false);
         } else if (statusRes.live) {
           setIsRunning(true);
+        } else {
+          setIsRunning(false);
         }
       }
 
@@ -67,7 +87,7 @@ export default function App() {
     } catch (err) {
       console.warn("Polling warning:", err);
     }
-  }, []);
+  }, [triggerStartDemo]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -75,7 +95,7 @@ export default function App() {
 
     const interval = setInterval(() => {
       fetchDashboardData();
-    }, 800);
+    }, 1000);
 
     return () => {
       isMountedRef.current = false;
@@ -101,11 +121,7 @@ export default function App() {
       setAccuracyHistory({ rounds: [], accuracy: [] });
       setAuditLog([]);
 
-      await fetch(`${API_BASE}/demo/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ n_rounds: 20, round_delay_seconds: 2.0 }),
-      });
+      await triggerStartDemo();
     } catch (err) {
       console.error("Start error:", err);
       setIsRunning(false);
@@ -306,7 +322,7 @@ export default function App() {
                   </ResponsiveContainer>
                 ) : (
                   <div className="h-full flex items-center justify-center text-[#8E8E93] text-[11px]">
-                    [ AWAITING SIMULATION DATA STREAM ]
+                    [ INITIALIZING SYNTHETIC STREAM... ]
                   </div>
                 )}
               </div>
