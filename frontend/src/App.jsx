@@ -19,15 +19,15 @@ import {
 const API_BASE =
   "https://project-cipherwatch-production.up.railway.app/api";
 
-const BLUE = "#527EAF";
-const DARK = "#162B45";
-const TEXT = "#1D3553";
-const MUTED = "#71839A";
-const BORDER = "#DFE5EC";
-const LIGHT_BLUE = "#EEF4FA";
-const GREEN = "#2E8B70";
-const LIGHT_GREEN = "#EDF7F3";
-const RED = "#D9534F";
+const BLUE = "#00C8FF";
+const DARK = "#FFFFFF";
+const TEXT = "#FFFFFF";
+const MUTED = "#8E8E93";
+const BORDER = "#333333";
+const LIGHT_BLUE = "#101820";
+const GREEN = "#00FF00";
+const LIGHT_GREEN = "#001A00";
+const RED = "#FF3B30";
 
 export default function App() {
   // ============================================================
@@ -671,13 +671,13 @@ export default function App() {
                     >
                       <stop
                         offset="0%"
-                        stopColor="#527EAF"
+                        stopColor="#00C8FF"
                         stopOpacity={0.18}
                       />
 
                       <stop
                         offset="100%"
-                        stopColor="#527EAF"
+                        stopColor="#00C8FF"
                         stopOpacity={0.02}
                       />
                     </linearGradient>
@@ -710,7 +710,7 @@ export default function App() {
 
                   <Tooltip
                     contentStyle={{
-                      background: "#ffffff",
+                      background: "#000000",
                       border:
                         "1px solid #DFE5EC",
                       borderRadius: "8px",
@@ -1637,13 +1637,13 @@ export default function App() {
                     >
                       <stop
                         offset="0%"
-                        stopColor="#527EAF"
+                        stopColor="#00C8FF"
                         stopOpacity={0.18}
                       />
 
                       <stop
                         offset="100%"
-                        stopColor="#527EAF"
+                        stopColor="#00C8FF"
                         stopOpacity={0.02}
                       />
                     </linearGradient>
@@ -1884,7 +1884,7 @@ export default function App() {
             BlinkMacSystemFont,
             "Segoe UI",
             sans-serif;
-          background: #f7f9fb;
+          background: #000000;
           color: ${TEXT};
         }
 
@@ -1899,7 +1899,7 @@ export default function App() {
         .cw-app {
           min-height: 100vh;
           display: flex;
-          background: #f7f9fb;
+          background: #000000;
         }
 
         /* SIDEBAR */
@@ -1907,7 +1907,7 @@ export default function App() {
         .cw-sidebar {
           width: 250px;
           min-width: 250px;
-          background: #ffffff;
+          background: #050505;
           border-right: 1px solid ${BORDER};
           min-height: 100vh;
           padding: 28px 16px;
@@ -1926,7 +1926,7 @@ export default function App() {
         .cw-brand-icon {
           width: 42px;
           height: 42px;
-          border-radius: 11px;
+          border-radius: 0px;
           background: ${BLUE};
           display: flex;
           align-items: center;
@@ -1969,7 +1969,7 @@ export default function App() {
           color: #64758c;
           width: 100%;
           padding: 12px;
-          border-radius: 9px;
+          border-radius: 0px;
           display: flex;
           align-items: center;
           gap: 13px;
@@ -1980,12 +1980,12 @@ export default function App() {
         }
 
         .cw-nav-button:hover {
-          background: #f3f6f9;
+          background: #111111;
           color: ${BLUE};
         }
 
         .cw-nav-button.active {
-          background: #eaf2fa;
+          background: #101820;
           color: #315f8c;
           font-weight: 600;
         }
@@ -2077,7 +2077,7 @@ export default function App() {
           border: 0;
           background: ${BLUE};
           color: white;
-          border-radius: 9px;
+          border-radius: 0px;
           padding: 13px 19px;
           font-size: 13px;
           font-weight: 600;
@@ -2101,9 +2101,9 @@ export default function App() {
         /* PROGRESS */
 
         .cw-progress-card {
-          background: white;
+          background: #050505;
           border: 1px solid ${BORDER};
-          border-radius: 13px;
+          border-radius: 0px;
           padding: 16px 20px;
           display: flex;
           align-items: center;
@@ -2129,7 +2129,7 @@ export default function App() {
           flex: 1;
           height: 7px;
           border-radius: 99px;
-          background: #e8edf2;
+          background: #222222;
           overflow: hidden;
         }
 
@@ -2166,9 +2166,9 @@ export default function App() {
         }
 
         .cw-metric {
-          background: white;
+          background: #050505;
           border: 1px solid ${BORDER};
-          border-radius: 13px;
+          border-radius: 0px;
           padding: 19px;
           min-height: 157px;
         }
@@ -2189,7 +2189,7 @@ export default function App() {
         .cw-metric-icon {
           width: 32px;
           height: 32px;
-          border-radius: 7px;
+          border-radius: 0px;
           background: ${LIGHT_BLUE};
           color: ${BLUE};
           display: flex;
@@ -2230,9 +2230,9 @@ export default function App() {
         }
 
         .cw-card {
-          background: white;
+          background: #050505;
           border: 1px solid ${BORDER};
-          border-radius: 13px;
+          border-radius: 0px;
           padding: 20px;
         }
 
@@ -2268,7 +2268,7 @@ export default function App() {
           background: ${LIGHT_BLUE};
           color: ${BLUE};
           padding: 7px 10px;
-          border-radius: 7px;
+          border-radius: 0px;
           font-size: 11px;
           font-weight: 600;
           white-space: nowrap;
@@ -2317,7 +2317,7 @@ export default function App() {
         .cw-inst-icon {
           width: 34px;
           height: 34px;
-          border-radius: 7px;
+          border-radius: 0px;
           background: ${LIGHT_BLUE};
           color: ${BLUE};
           display: flex;
@@ -2367,7 +2367,7 @@ export default function App() {
 
         .cw-risk-box {
           border: 1px solid ${BORDER};
-          border-radius: 9px;
+          border-radius: 0px;
           padding: 14px;
           margin-top: 18px;
         }
@@ -2423,9 +2423,9 @@ export default function App() {
         .cw-network {
           height: 290px;
           border: 1px solid #edf0f3;
-          border-radius: 9px;
+          border-radius: 0px;
           margin-top: 8px;
-          background: #fcfdfe;
+          background: #000000;
           position: relative;
           overflow: hidden;
           display: flex;
@@ -2458,7 +2458,7 @@ export default function App() {
           position: absolute;
           right: 12px;
           top: 12px;
-          background: white;
+          background: #050505;
           border: 1px solid ${BLUE};
           border-radius: 8px;
           padding: 12px;
@@ -2493,9 +2493,9 @@ export default function App() {
         }
 
         .cw-wallet-details > div {
-          background: #f8fafc;
+          background: #050505;
           border: 1px solid #edf0f3;
-          border-radius: 9px;
+          border-radius: 0px;
           padding: 15px;
         }
 
