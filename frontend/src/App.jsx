@@ -19,15 +19,15 @@ import {
 const API_BASE =
   "https://project-cipherwatch-production.up.railway.app/api";
 
-const BLUE = "#00C8FF";
-const DARK = "#FFFFFF";
-const TEXT = "#FFFFFF";
-const MUTED = "#8E8E93";
-const BORDER = "#333333";
-const LIGHT_BLUE = "#101820";
-const GREEN = "#00FF00";
+const BLUE = "#45b6d5";
+const DARK = "#d4cece";
+const TEXT = "#f0eaea";
+const MUTED = "#9AA7B2";
+const BORDER = "#26313A";
+const LIGHT_BLUE = "#13232B";
+const GREEN = "#38c538";
 const LIGHT_GREEN = "#001A00";
-const RED = "#FF3B30";
+const RED = "#ca3931";
 
 export default function App() {
   // ============================================================
@@ -1899,7 +1899,7 @@ export default function App() {
         .cw-app {
           min-height: 100vh;
           display: flex;
-          background: #000000;
+          background: #171515;
         }
 
         /* SIDEBAR */
@@ -1907,7 +1907,7 @@ export default function App() {
         .cw-sidebar {
           width: 250px;
           min-width: 250px;
-          background: #050505;
+          background: #171515;
           border-right: 1px solid ${BORDER};
           min-height: 100vh;
           padding: 28px 16px;
@@ -2101,7 +2101,7 @@ export default function App() {
         /* PROGRESS */
 
         .cw-progress-card {
-          background: #050505;
+          background: #171515;
           border: 1px solid ${BORDER};
           border-radius: 0px;
           padding: 16px 20px;
@@ -2129,7 +2129,7 @@ export default function App() {
           flex: 1;
           height: 7px;
           border-radius: 99px;
-          background: #222222;
+          background: #1e1d1d;
           overflow: hidden;
         }
 
@@ -2166,7 +2166,7 @@ export default function App() {
         }
 
         .cw-metric {
-          background: #050505;
+          background: #171515;
           border: 1px solid ${BORDER};
           border-radius: 0px;
           padding: 19px;
@@ -2230,7 +2230,7 @@ export default function App() {
         }
 
         .cw-card {
-          background: #050505;
+          background: #161414;
           border: 1px solid ${BORDER};
           border-radius: 0px;
           padding: 20px;
@@ -2260,7 +2260,7 @@ export default function App() {
 
         .cw-card-description {
           color: ${MUTED};
-          font-size: 11px;
+          font-size: 13px;
           margin-top: 7px;
         }
 
@@ -2269,7 +2269,7 @@ export default function App() {
           color: ${BLUE};
           padding: 7px 10px;
           border-radius: 0px;
-          font-size: 11px;
+          font-size: 13px;
           font-weight: 600;
           white-space: nowrap;
         }
@@ -2334,7 +2334,7 @@ export default function App() {
 
         .cw-inst-sub {
           color: #8b9aac;
-          font-size: 10px;
+          font-size: 13px;
           margin-top: 4px;
         }
 
@@ -2343,7 +2343,7 @@ export default function App() {
           color: ${GREEN};
           padding: 7px 10px;
           border-radius: 6px;
-          font-size: 10px;
+          font-size: 13px;
           font-weight: 700;
         }
 
@@ -2386,14 +2386,14 @@ export default function App() {
         }
 
         .cw-risk-title {
-          font-size: 12px;
+          font-size: 13px;
           font-weight: 600;
           color: ${TEXT};
         }
 
         .cw-risk-sub {
           color: #8b99a9;
-          font-size: 10px;
+          font-size: 13px;
           margin-top: 5px;
         }
 
@@ -2425,7 +2425,7 @@ export default function App() {
           border: 1px solid #edf0f3;
           border-radius: 0px;
           margin-top: 8px;
-          background: #000000;
+          background: #141414;
           position: relative;
           overflow: hidden;
           display: flex;
@@ -2445,26 +2445,26 @@ export default function App() {
           align-items: center;
           justify-content: center;
           color: #9aa7b6;
-          font-size: 12px;
+          font-size: 14px;
           text-align: center;
         }
 
         .cw-network-count {
           color: ${MUTED};
-          font-size: 11px;
+          font-size: 13px;
         }
 
         .cw-wallet-popup {
           position: absolute;
           right: 12px;
           top: 12px;
-          background: #050505;
+          background: #1e1818;
           border: 1px solid ${BLUE};
           border-radius: 8px;
           padding: 12px;
           box-shadow:
             0 5px 20px rgba(30, 60, 90, 0.12);
-          font-size: 11px;
+          font-size: 13px;
           z-index: 5;
         }
 
@@ -2482,7 +2482,7 @@ export default function App() {
           padding: 5px 9px;
           border-radius: 5px;
           cursor: pointer;
-          font-size: 10px;
+          font-size: 13px;
         }
 
         .cw-wallet-details {
@@ -2493,7 +2493,7 @@ export default function App() {
         }
 
         .cw-wallet-details > div {
-          background: #050505;
+          background: #473c3c;
           border: 1px solid #edf0f3;
           border-radius: 0px;
           padding: 15px;
@@ -2501,7 +2501,7 @@ export default function App() {
 
         .cw-wallet-details strong {
           display: block;
-          font-size: 10px;
+          font-size: 13px;
           color: ${MUTED};
           margin-bottom: 7px;
         }
@@ -2517,12 +2517,12 @@ export default function App() {
         .cw-audit-table {
           width: 100%;
           border-collapse: collapse;
-          font-size: 12px;
+          font-size: 13px;
         }
 
         .cw-audit-table th {
           color: #71839A;
-          font-size: 10px;
+          font-size: 13px;
           font-weight: 600;
           text-align: left;
           padding: 11px 8px;
@@ -2540,7 +2540,7 @@ export default function App() {
         }
 
         .cw-hash {
-          color: #8291a4 !important;
+          color: #576270 !important;
           font-family: monospace;
           max-width: 350px;
           overflow: hidden;
@@ -2556,8 +2556,8 @@ export default function App() {
         /* FOOTER */
 
         .cw-footer {
-          color: #8b99a9;
-          font-size: 11px;
+          color: #bbc1c7;
+          font-size: 13px;
           text-align: center;
           padding: 20px 0 5px;
         }
